@@ -9,7 +9,7 @@ const player = {
   y: 150,
   size: 20,
   color: "blue",
-  speed: 2,
+  speed: 5,
 };
 
 function drawPlayer() {
@@ -27,11 +27,23 @@ function update() {
   requestAnimationFrame(update);
 }
 
-document.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowUp") player.y -= player.speed;
-  if (e.key === "ArrowDown") player.y += player.speed;
-  if (e.key === "ArrowLeft") player.x -= player.speed;
-  if (e.key === "ArrowRight") player.x += player.speed;
+// Listen for arrow key presses
+document.addEventListener("keydown", function (event) {
+  switch (event.key) {
+    case "ArrowUp":
+      player.y -= player.speed;
+      break;
+    case "ArrowDown":
+      player.y += player.speed;
+      break;
+    case "ArrowLeft":
+      player.x -= player.speed;
+      break;
+    case "ArrowRight":
+      player.x += player.speed;
+      break;
+  }
 });
 
+// Start the game loop
 update();
