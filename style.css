@@ -1,12 +1,37 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-canvas.width = 300;
-canvas.height = 300;
+canvas.width = 320;
+canvas.height = 320;
 
-ctx.fillStyle = 'green';
-ctx.fillRect(10, 10, 50, 50);
+const player = {
+  x: 150,
+  y: 150,
+  size: 20,
+  color: "blue",
+  speed: 2,
+};
 
-ctx.fillStyle = 'black';
-ctx.font = '16px Arial';
-ctx.fillText('MrPi!', 15, 40);
+function drawPlayer() {
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.size, player.size);
+}
+
+function clearCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function update() {
+  clearCanvas();
+  drawPlayer();
+  requestAnimationFrame(update);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowUp") player.y -= player.speed;
+  if (e.key === "ArrowDown") player.y += player.speed;
+  if (e.key === "ArrowLeft") player.x -= player.speed;
+  if (e.key === "ArrowRight") player.x += player.speed;
+});
+
+update();
