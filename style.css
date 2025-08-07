@@ -1,8 +1,12 @@
-body {
-  text-align: center;
-  margin-top: 50px;
-}
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 
-canvas {
-  border: 1px solid black;
-}
+canvas.width = 300;
+canvas.height = 300;
+
+ctx.fillStyle = 'green';
+ctx.fillRect(10, 10, 50, 50);
+
+ctx.fillStyle = 'black';
+ctx.font = '16px Arial';
+ctx.fillText('MrPi!', 15, 40);
