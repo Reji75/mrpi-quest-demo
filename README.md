@@ -1,5 +1,6 @@
-# MrPi Quest Demo
+# MrPi Island Quest
 
-This is a basic demo site for the MrPi Island Quest game.
+A simple demo game made with HTML5 Canvas, JavaScript, and CSS.  
+Deployed using GitHub and Vercel.
 
-Built using HTML + CSS and deployed on Vercel.
+🌐 Live Demo: [https://mrpi-quest-demo.vercel.app](https://mrpi-quest-demo.vercel.app)
