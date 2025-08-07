@@ -4,49 +4,46 @@ const ctx = canvas.getContext("2d");
 canvas.width = 320;
 canvas.height = 320;
 
-const playerImage = new Image();
-playerImage.src = "mrpi_sprite_64x64.png"; // Make sure this image is in your project root
+const sprite = new Image();
+sprite.src = "mrpi_sprite_64x64.png";
 
 const player = {
   x: 150,
   y: 150,
-  width: 32,
-  height: 32,
-  speed: 2,
+  size: 32,
+  speed: 3,
+  dx: 0,
+  dy: 0,
 };
 
-let keys = {};
-
+// Handle key press
 document.addEventListener("keydown", (e) => {
-  keys[e.key] = true;
+  if (e.key === "ArrowRight") player.dx = player.speed;
+  if (e.key === "ArrowLeft") player.dx = -player.speed;
+  if (e.key === "ArrowUp") player.dy = -player.speed;
+  if (e.key === "ArrowDown") player.dy = player.speed;
 });
 
+// Handle key release
 document.addEventListener("keyup", (e) => {
-  keys[e.key] = false;
+  if (["ArrowRight", "ArrowLeft"].includes(e.key)) player.dx = 0;
+  if (["ArrowUp", "ArrowDown"].includes(e.key)) player.dy = 0;
 });
-
-function updatePlayerPosition() {
-  if (keys["ArrowUp"] && player.y > 0) player.y -= player.speed;
-  if (keys["ArrowDown"] && player.y + player.height < canvas.height) player.y += player.speed;
-  if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed;
-  if (keys["ArrowRight"] && player.x + player.width < canvas.width) player.x += player.speed;
-}
 
 function clearCanvas() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 function drawPlayer() {
-  ctx.drawImage(playerImage, player.x, player.y, player.width, player.height);
+  ctx.drawImage(sprite, player.x, player.y, player.size, player.size);
 }
 
-function gameLoop() {
-  updatePlayerPosition();
+function update() {
   clearCanvas();
+  player.x += player.dx;
+  player.y += player.dy;
   drawPlayer();
-  requestAnimationFrame(gameLoop);
+  requestAnimationFrame(update);
 }
 
-playerImage.onload = function () {
-  gameLoop();
-};
+sprite.onload = update;
