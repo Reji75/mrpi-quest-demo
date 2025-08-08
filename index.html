@@ -2,27 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MrPi Island Quest</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>🌴 MrPi Island Quest</h1>
-  <p>Use arrows or touch controls to move MrPi</p>
-  <canvas id="gameCanvas" width="640" height="480"></canvas>
+  <header class="topbar">
+    <h1>🌴 MrPi Island Quest</h1>
+    <p class="sub">Use arrow keys or the touch controls to move MrPi and collect golden MrPi tokens.</p>
+  </header>
 
-  <!-- Mobile touch buttons -->
-  <div id="controls">
+  <!-- Game canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- On-screen controls (mobile) -->
+  <div id="controls" aria-label="Touch controls">
     <div class="control-row">
-      <button class="btn" onclick="move('up')">⬆️</button>
+      <button id="btnUp"    class="btn" aria-label="Up">⬆️</button>
     </div>
     <div class="control-row">
-      <button class="btn" onclick="move('left')">⬅️</button>
-      <button class="btn" onclick="move('down')">⬇️</button>
-      <button class="btn" onclick="move('right')">➡️</button>
+      <button id="btnLeft"  class="btn" aria-label="Left">⬅️</button>
+      <button id="btnDown"  class="btn" aria-label="Down">⬇️</button>
+      <button id="btnRight" class="btn" aria-label="Right">➡️</button>
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <!-- Load game AFTER elements exist -->
+  <script src="script.js" defer></script>
 </body>
 </html>
