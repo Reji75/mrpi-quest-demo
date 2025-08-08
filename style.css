@@ -1,5 +1,53 @@
+/* --- Layout / typography --- */
+:root {
+  --max-width: 720px;
+  --pad: 12px;
+  --accent: #ffe600;
+  --bg-canvas: #eaf6ff;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #111;
+  background: #fff;
+}
+
+.topbar {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--pad);
+}
+h1 {
+  font-size: clamp(22px, 4.5vw, 34px);
+  margin: 8px 0 4px;
+}
+.sub {
+  margin: 0 0 8px;
+  color: #444;
+  font-size: clamp(14px, 2.8vw, 16px);
+}
+
+/* --- Canvas --- */
+#gameCanvas {
+  display: block;
+  margin: 8px auto;
+  width: min(95vw, var(--max-width)); /* responsive width */
+  aspect-ratio: 1 / 1;                /* keeps a square on phones */
+  border: 2px solid #000;             /* visible while developing */
+  background: var(--bg-canvas);
+  touch-action: none;                 /* avoid scroll on swipe */
+}
+
+/* Script will set actual pixel size; aspect-ratio keeps layout stable */
+
+/* --- On-screen controls --- */
 #controls {
-  margin-top: 20px;
+  max-width: var(--max-width);
+  margin: 10px auto 20px;
+  padding: 0 var(--pad);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -8,15 +56,29 @@
 .control-row {
   display: flex;
   justify-content: center;
-  margin: 5px;
+  gap: 14px;
+  margin: 6px 0;
 }
 
 .btn {
   font-size: 2rem;
-  padding: 10px 20px;
-  margin: 5px;
-  border-radius: 10px;
+  line-height: 1;
+  padding: 12px 22px;
+  border-radius: 12px;
   border: none;
-  background-color: #ffe600;
-  color: black;
+  background: var(--accent);
+  color: #222;
+  box-shadow: 0 2px 0 #d2c100, 0 4px 10px rgba(0,0,0,.1);
+  cursor: pointer;
+  user-select: none;
+}
+
+.btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 #c2b100, 0 2px 6px rgba(0,0,0,.12);
+}
+
+/* Hide controls on larger screens (desktop users have keyboard) */
+@media (min-width: 820px) {
+  #controls { display: none; }
 }
