@@ -1,41 +1,55 @@
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-
-canvas.width = 320;
-canvas.height = 320;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 
 const sprite = new Image();
-sprite.src = "mrpi_sprite_64x64.png";
+sprite.src = 'mrpi_sprite_64x64.png';
 
-let x = 0;
-let y = 0;
+let x = 100;
+let y = 100;
+const speed = 5;
 
-document.addEventListener("keydown", (e) => {
-  const step = 64;
+let keys = {
+  ArrowUp: false,
+  ArrowDown: false,
+  ArrowLeft: false,
+  ArrowRight: false
+};
 
-  switch (e.key) {
-    case "ArrowUp":
-      if (y - step >= 0) y -= step;
-      break;
-    case "ArrowDown":
-      if (y + step < canvas.height) y += step;
-      break;
-    case "ArrowLeft":
-      if (x - step >= 0) x -= step;
-      break;
-    case "ArrowRight":
-      if (x + step < canvas.width) x += step;
-      break;
-  }
-
-  draw();
+// Keyboard controls
+document.addEventListener('keydown', (e) => {
+  if (e.key in keys) keys[e.key] = true;
+});
+document.addEventListener('keyup', (e) => {
+  if (e.key in keys) keys[e.key] = false;
 });
 
-sprite.onload = function () {
+// Mobile button controls
+function move(direction) {
+  if (direction === 'up') y -= speed;
+  if (direction === 'down') y += speed;
+  if (direction === 'left') x -= speed;
+  if (direction === 'right') x += speed;
   draw();
-};
+}
+
+function update() {
+  if (keys.ArrowUp) y -= speed;
+  if (keys.ArrowDown) y += speed;
+  if (keys.ArrowLeft) x -= speed;
+  if (keys.ArrowRight) x += speed;
+}
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(sprite, x, y, 64, 64);
 }
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+sprite.onload = () => {
+  gameLoop();
+};
