@@ -1,55 +1,33 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+// Load token image
+const tokenImage = new Image();
+tokenImage.src = 'token_64x64.png'; // Make sure filename matches exactly
 
-const sprite = new Image();
-sprite.src = 'mrpi_sprite_64x64.png';
+// Example collectible item structure
+let collectibles = [
+  { x: 100, y: 100, collected: false },
+  { x: 200, y: 150, collected: false },
+  { x: 300, y: 200, collected: false },
+];
 
-let x = 100;
-let y = 100;
-const speed = 5;
-
-let keys = {
-  ArrowUp: false,
-  ArrowDown: false,
-  ArrowLeft: false,
-  ArrowRight: false
-};
-
-// Keyboard controls
-document.addEventListener('keydown', (e) => {
-  if (e.key in keys) keys[e.key] = true;
-});
-document.addEventListener('keyup', (e) => {
-  if (e.key in keys) keys[e.key] = false;
-});
-
-// Mobile button controls
-function move(direction) {
-  if (direction === 'up') y -= speed;
-  if (direction === 'down') y += speed;
-  if (direction === 'left') x -= speed;
-  if (direction === 'right') x += speed;
-  draw();
+// Draw collectibles
+function drawCollectibles(ctx) {
+  collectibles.forEach(token => {
+    if (!token.collected) {
+      ctx.drawImage(tokenImage, token.x, token.y, 32, 32);
+    }
+  });
 }
 
-function update() {
-  if (keys.ArrowUp) y -= speed;
-  if (keys.ArrowDown) y += speed;
-  if (keys.ArrowLeft) x -= speed;
-  if (keys.ArrowRight) x += speed;
+// Collision check
+function checkCollectibles(playerX, playerY) {
+  collectibles.forEach(token => {
+    if (!token.collected &&
+        playerX < token.x + 32 &&
+        playerX + 32 > token.x &&
+        playerY < token.y + 32 &&
+        playerY + 32 > token.y) {
+      token.collected = true;
+      // Increase score here if needed
+    }
+  });
 }
-
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(sprite, x, y, 64, 64);
-}
-
-function gameLoop() {
-  update();
-  draw();
-  requestAnimationFrame(gameLoop);
-}
-
-sprite.onload = () => {
-  gameLoop();
-};
