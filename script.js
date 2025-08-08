@@ -1,142 +1,144 @@
-/* MrPi Island Quest – script.js
-   - Arrow keys + mobile buttons
-   - Collect 5 golden MrPi tokens (token_64x64.png)
-   - Simple HUD + Win message
-*/
+// ====== CONFIG ======
+const CANVAS_SIZE = 320;        // logical game space
+const SPEED = 3;                // px per frame
+const SPRITE_SIZE = 48;         // draw size for MrPi
+const TOKEN_SIZE  = 42;         // draw size for token
+// =====================
 
-// ---------- Canvas & sizing ----------
-const existing = document.getElementById('gameCanvas');
-const canvas = existing || (() => {
-  const c = document.createElement('canvas');
-  c.id = 'gameCanvas';
-  document.body.insertBefore(c, document.getElementById('controls') || null);
-  return c;
-})();
-const ctx = canvas.getContext('2d');
+// Canvas & hi-DPI scaling
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
 
-function sizeCanvas() {
-  const maxW = Math.min(700, window.innerWidth - 24);
-  const maxH = Math.min(500, window.innerHeight * 0.6);
-  canvas.width = Math.max(320, Math.floor(maxW));
-  canvas.height = Math.max(320, Math.floor(maxH));
+function resizeCanvas() {
+  const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+  canvas.width  = CANVAS_SIZE * dpr;
+  canvas.height = CANVAS_SIZE * dpr;
+  canvas.style.width  = CANVAS_SIZE + 'px';
+  canvas.style.height = CANVAS_SIZE + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-sizeCanvas();
-window.addEventListener('resize', sizeCanvas);
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
 
-// ---------- Assets ----------
+// Load images
 const mrpiImg = new Image();
-mrpiImg.src = 'mrpi_sprite_64x64.png'; // your player sprite
+mrpiImg.src = 'mrpi_sprite_64x64.png';
 
 const tokenImg = new Image();
-tokenImg.src = 'token_64x64.png'; // shiny golden MrPi token
+tokenImg.src = 'token_64x64.png';
 
-// ---------- Player ----------
-const player = {
-  x: 60,
-  y: 60,
-  size: 32,
-  speed: 3,
+// Game state
+const mrpi = {
+  x: (CANVAS_SIZE - SPRITE_SIZE) / 2,
+  y: (CANVAS_SIZE - SPRITE_SIZE) / 2,
+  w: SPRITE_SIZE,
+  h: SPRITE_SIZE,
 };
 
-// ---------- Tokens ----------
-const TOKEN_SIZE = 28;
-const TOKENS_TO_COLLECT = 5;
-let tokens = [];
+let token = spawnToken();
+let keys = { ArrowUp:false, ArrowDown:false, ArrowLeft:false, ArrowRight:false };
+let score = 0;
 
-function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-
-function placeTokens() {
-  tokens = [];
-  const pad = 20;
-  for (let i = 0; i < TOKENS_TO_COLLECT; i++) {
-    let tries = 0;
-    while (tries++ < 50) {
-      const t = {
-        x: rand(pad, canvas.width - pad - TOKEN_SIZE),
-        y: rand(pad + 40, canvas.height - pad - TOKEN_SIZE),
-        collected: false,
-      };
-      // keep tokens from overlapping each other or the starting player spot
-      const overlaps = tokens.some(o =>
-        Math.abs(o.x - t.x) < TOKEN_SIZE &&
-        Math.abs(o.y - t.y) < TOKEN_SIZE
-      ) || (Math.abs(t.x - player.x) < 48 && Math.abs(t.y - player.y) < 48);
-      if (!overlaps) { tokens.push(t); break; }
-    }
-  }
+// Helpers
+function spawnToken() {
+  const margin = 12;
+  const x = Math.floor(Math.random() * (CANVAS_SIZE - TOKEN_SIZE - margin*2)) + margin;
+  const y = Math.floor(Math.random() * (CANVAS_SIZE - TOKEN_SIZE - margin*2)) + margin;
+  return { x, y, w: TOKEN_SIZE, h: TOKEN_SIZE };
 }
-placeTokens();
 
-// ---------- Input (keyboard) ----------
-const keys = { ArrowUp:false, ArrowDown:false, ArrowLeft:false, ArrowRight:false };
-window.addEventListener('keydown', e => { if (e.key in keys) { keys[e.key] = true; e.preventDefault(); }});
-window.addEventListener('keyup',   e => { if (e.key in keys) { keys[e.key] = false; e.preventDefault(); }});
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
-// ---------- Input (mobile buttons) ----------
-function hookBtn(id, keyName) {
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w &&
+         a.x + a.w > b.x &&
+         a.y < b.y + b.h &&
+         a.y + a.h > b.y;
+}
+
+// Input — keyboard
+window.addEventListener('keydown', (e) => {
+  if (e.key in keys) { keys[e.key] = true; e.preventDefault(); }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.key in keys) { keys[e.key] = false; e.preventDefault(); }
+});
+
+// Input — touch buttons (if they exist in your HTML)
+function bindBtn(id, on, off) {
   const el = document.getElementById(id);
   if (!el) return;
-  const press = () => { keys[keyName] = true; };
-  const release = () => { keys[keyName] = false; };
-  el.addEventListener('touchstart', e => { press(); e.preventDefault(); }, {passive:false});
-  el.addEventListener('touchend',   e => { release(); e.preventDefault(); }, {passive:false});
-  el.addEventListener('mousedown',  press);
-  el.addEventListener('mouseup',    release);
-  el.addEventListener('mouseleave', release);
-}
-hookBtn('btnUp', 'ArrowUp');
-hookBtn('btnDown', 'ArrowDown');
-hookBtn('btnLeft', 'ArrowLeft');
-hookBtn('btnRight','ArrowRight');
+  const start = () => on();
+  const end   = () => off();
 
-// ---------- Helpers ----------
-function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
-
-function aabb(ax, ay, aw, ah, bx, by, bw, bh) {
-  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  el.addEventListener('touchstart', (e) => { e.preventDefault(); start(); }, { passive:false });
+  el.addEventListener('touchend',   (e) => { e.preventDefault(); end();   }, { passive:false });
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup',   end);
+  el.addEventListener('mouseleave', end);
 }
 
-// ---------- Game loop ----------
-let collectedCount = 0;
-let won = false;
+bindBtn('btn-up',    () => keys.ArrowUp    = true, () => keys.ArrowUp    = false);
+bindBtn('btn-down',  () => keys.ArrowDown  = true, () => keys.ArrowDown  = false);
+bindBtn('btn-left',  () => keys.ArrowLeft  = true, () => keys.ArrowLeft  = false);
+bindBtn('btn-right', () => keys.ArrowRight = true, () => keys.ArrowRight = false);
 
+// Update loop
 function update() {
-  // movement
-  let dx = 0, dy = 0;
-  if (keys.ArrowUp) dy -= 1;
-  if (keys.ArrowDown) dy += 1;
-  if (keys.ArrowLeft) dx -= 1;
-  if (keys.ArrowRight) dx += 1;
-  if (dx && dy) { dx *= Math.SQRT1_2; dy *= Math.SQRT1_2; } // diagonal normalize
+  // Move
+  if (keys.ArrowUp)    mrpi.y -= SPEED;
+  if (keys.ArrowDown)  mrpi.y += SPEED;
+  if (keys.ArrowLeft)  mrpi.x -= SPEED;
+  if (keys.ArrowRight) mrpi.x += SPEED;
 
-  player.x = clamp(player.x + dx * player.speed, 0, canvas.width - player.size);
-  player.y = clamp(player.y + dy * player.speed, 0, canvas.height - player.size);
+  // Clamp to canvas
+  mrpi.x = clamp(mrpi.x, 0, CANVAS_SIZE - mrpi.w);
+  mrpi.y = clamp(mrpi.y, 0, CANVAS_SIZE - mrpi.h);
 
-  // collectibles
-  tokens.forEach(t => {
-    if (!t.collected && aabb(player.x, player.y, player.size, player.size, t.x, t.y, TOKEN_SIZE, TOKEN_SIZE)) {
-      t.collected = true;
-      collectedCount++;
-      if (collectedCount >= TOKENS_TO_COLLECT) won = true;
-    }
-  });
+  // Collect token
+  if (rectsOverlap(mrpi, token)) {
+    score += 1;
+    token = spawnToken();
+  }
+
+  draw();
+  requestAnimationFrame(update);
 }
 
+// Draw
 function draw() {
-  // background
-  ctx.fillStyle = '#eaf6ff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Background
+  ctx.fillStyle = '#eaf4ff'; // match your CSS canvas bg
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  // title area hint (kept blank because your page title text lives in HTML)
+  // Token
+  if (tokenImg.complete) {
+    ctx.drawImage(tokenImg, token.x, token.y, TOKEN_SIZE, TOKEN_SIZE);
+  } else {
+    // fallback circle
+    ctx.fillStyle = '#d4a017';
+    ctx.beginPath();
+    ctx.arc(token.x + TOKEN_SIZE/2, token.y + TOKEN_SIZE/2, TOKEN_SIZE/2, 0, Math.PI*2);
+    ctx.fill();
+  }
 
-  // tokens
-  tokens.forEach(t => {
-    if (!t.collected && tokenImg.complete) {
-      ctx.drawImage(tokenImg, t.x, t.y, TOKEN_SIZE, TOKEN_SIZE);
-    } else if (!t.collected) {
-      // fallback circle if image hasn’t loaded yet
-      ctx.fillStyle = '#f2c200';
-      ctx.beginPath();
-      ctx.arc(t.x + TOKEN_SIZE/2, t.y + TOKEN_SIZE/2, TOKEN_SIZE/2, 0, Math.PI*2);
-      ctx.fill();
-   
+  // MrPi
+  if (mrpiImg.complete) {
+    ctx.drawImage(mrpiImg, mrpi.x, mrpi.y, SPRITE_SIZE, SPRITE_SIZE);
+  } else {
+    // fallback square
+    ctx.fillStyle = '#1877f2';
+    ctx.fillRect(mrpi.x, mrpi.y, SPRITE_SIZE, SPRITE_SIZE);
+  }
+
+  // HUD
+  ctx.fillStyle = '#111';
+  ctx.font = '16px system-ui, -apple-system, Arial';
+  ctx.fillText(`Tokens: ${score}`, 10, 20);
+}
+
+// Start once images have a chance to load
+Promise.all([
+  new Promise(res => { mrpiImg.onload = res; if (mrpiImg.complete) res(); }),
+  new Promise(res => { tokenImg.onload = res; if (tokenImg.complete) res(); }),
+]).finally(() => requestAnimationFrame(update));
