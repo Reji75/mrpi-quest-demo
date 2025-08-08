@@ -2,32 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MrPi Island Quest</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MrPi Island Quest - Demo</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <h1>🌴 MrPi Island Quest</h1>
-    <p class="sub">Use arrow keys or the touch controls to move MrPi and collect golden MrPi tokens.</p>
-  </header>
 
-  <!-- Game canvas -->
+  <h1>MrPi Island Quest</h1>
   <canvas id="gameCanvas"></canvas>
 
-  <!-- On-screen controls (mobile) -->
-  <div id="controls" aria-label="Touch controls">
-    <div class="control-row">
-      <button id="btnUp"    class="btn" aria-label="Up">⬆️</button>
-    </div>
-    <div class="control-row">
-      <button id="btnLeft"  class="btn" aria-label="Left">⬅️</button>
-      <button id="btnDown"  class="btn" aria-label="Down">⬇️</button>
-      <button id="btnRight" class="btn" aria-label="Right">➡️</button>
+  <!-- On-screen mobile controls -->
+  <div class="controls">
+    <button id="btnUp">⬆️</button>
+    <div>
+      <button id="btnLeft">⬅️</button>
+      <button id="btnDown">⬇️</button>
+      <button id="btnRight">➡️</button>
     </div>
   </div>
 
-  <!-- Load game AFTER elements exist -->
-  <script src="script.js" defer></script>
+  <script src="script.js"></script>
 </body>
 </html>
