@@ -1,340 +1,296 @@
-/* MrPi Island Quest – multi-enemy build
-   - Movement: arrow keys / WASD / swipe-drag
-   - Collect tokens for score
-   - Avoid crabs (enemies). Touch = lose a life + respawn.
-   - Tweakable settings are at the top (ENEMY_COUNT, SPEEDS, etc.)
-*/
+/* MrPi Island Quest — Isometric Prototype (Phaser 3) */
+/* No external assets: everything is drawn at runtime */
 
 (() => {
-  // ---------- Tweakable settings ----------
-  const CANVAS_SIZE = 560;           // drawing size (auto fits via CSS)
-  const RINGS = { inner: 110, grass: 180, water: 250 }; // island radii
-  const PLAYER_SPEED = 2.2;
-  const ENEMY_COUNT = 5;             // how many crabs to spawn
-  const ENEMY_BASE_SPEED = 0.012;    // radians per frame (baseline)
-  const ENEMY_SPEED_JITTER = 0.01;   // each crab gets ± this extra
-  const ENEMY_PATROLS = ['grass','water']; // which rings crabs use
-  const START_LIVES = 3;
-  const TOKEN_COUNT = 7;
-  const COLLIDE_RADIUS = 16;         // player <> coin/crab hit radius (px)
-  const STATUS_HOLD_MS = 1200;
+  const TILE_W = 64;      // diamond width
+  const TILE_H = 32;      // diamond height
+  const MAP_W  = 12;      // grid width
+  const MAP_H  = 12;      // grid height
 
-  // ---------- DOM ----------
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
-  // Make sure canvas is square and crisp on high DPI
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  canvas.width  = CANVAS_SIZE * dpr;
-  canvas.height = CANVAS_SIZE * dpr;
-  canvas.style.width  = CANVAS_SIZE + 'px';
-  canvas.style.height = CANVAS_SIZE + 'px';
-  ctx.scale(dpr, dpr);
-
-  // Score / status elements (be tolerant of different IDs)
-  const scoreEl  =
-    document.getElementById('score') ||
-    document.getElementById('scoreText') ||
-    document.querySelector('[data-score]') ||
-    document.querySelector('.score');
-  const statusEl =
-    document.getElementById('status') ||
-    document.getElementById('statusText') ||
-    document.querySelector('[data-status]') ||
-    document.querySelector('.status');
-
-  function setStatus(msg, color = '#2e7d32') {
-    if (!statusEl) return;
-    statusEl.textContent = msg;
-    statusEl.style.color = color;
-    // clear after a bit (unless it's Game Over / Victory)
-    if (!/over|victory/i.test(msg)) {
-      clearTimeout(setStatus._t);
-      setStatus._t = setTimeout(() => (statusEl.textContent = 'Ready.'), STATUS_HOLD_MS);
-    }
-  }
-
-  function setScore() {
-    if (!scoreEl) return;
-    scoreEl.textContent = `${state.score} / ${TOKEN_COUNT}`;
-  }
-
-  // ---------- Helpers ----------
-  const C = { x: CANVAS_SIZE / 2, y: CANVAS_SIZE / 2 }; // canvas center
-
-  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-  function dist(a, b) {
-    const dx = a.x - b.x, dy = a.y - b.y;
-    return Math.hypot(dx, dy);
-  }
-  function ringPoint(radius, angle) {
-    return { x: C.x + Math.cos(angle) * radius, y: C.y + Math.sin(angle) * radius };
-  }
-  function random(min, max) { return min + Math.random() * (max - min); }
-
-  // ---------- Assets (simple/fast: draw with shapes + emoji) ----------
-  function drawMrPi(x, y) {
-    // tiny body
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.shadowColor = 'rgba(0,0,0,0.25)';
-    ctx.shadowBlur = 6;
-    ctx.fillStyle = '#222';
-    ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
-    // face
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(0, -2, 9, 0, Math.PI * 2); ctx.fill();
-    // eyes
-    ctx.fillStyle = '#111';
-    ctx.beginPath(); ctx.arc(-3, -3, 2, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc( 3, -3, 2, 0, Math.PI * 2); ctx.fill();
-    // hat
-    ctx.fillStyle = '#30323a';
-    ctx.fillRect(-8, -18, 16, 4);
-    ctx.fillRect(-6, -22, 12, 6);
-    ctx.restore();
-  }
-
-  function drawToken(x, y) {
-    // golden coin
-    const r = 10;
-    const grd = ctx.createRadialGradient(x - 6, y - 6, 4, x, y, r + 2);
-    grd.addColorStop(0, '#fff59d');
-    grd.addColorStop(1, '#f9a825');
-    ctx.fillStyle = grd;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#bf7e0a';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(x, y, r - 2, 0, Math.PI * 2); ctx.stroke();
-    // MrPi text dot
-    ctx.fillStyle = '#954f00';
-    ctx.font = 'bold 8px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('MrPi', x, y+0.5);
-  }
-
-  function drawCrab(x, y) {
-    // simple crab icon (red body + claws)
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.fillStyle = '#d32f2f';
-    ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();     // body
-    ctx.beginPath(); ctx.arc(-12, -2, 4, 0, Math.PI * 2); ctx.fill();   // left claw
-    ctx.beginPath(); ctx.arc( 12, -2, 4, 0, Math.PI * 2); ctx.fill();   // right claw
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(-4, -3, 1.6, 0, Math.PI * 2); ctx.fill();  // eyes
-    ctx.beginPath(); ctx.arc( 4, -3, 1.6, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  }
-
-  // ---------- World state ----------
-  const state = {
-    player: { x: C.x, y: C.y, lives: START_LIVES },
-    score: 0,
-    tokens: [],
-    enemies: []
+  let score = 0;
+  let lives = 3;
+  const hud = {
+    score: () => document.getElementById('score').textContent = score,
+    lives: () => document.getElementById('lives').textContent = lives,
+    status: (t) => document.getElementById('status').textContent = t
   };
 
-  function spawnTokens() {
-    state.tokens.length = 0;
-    // distribute on grass ring band
-    for (let i = 0; i < TOKEN_COUNT; i++) {
-      const angle = random(0, Math.PI * 2);
-      const radius = random(RINGS.inner + 18, RINGS.grass - 18);
-      const p = ringPoint(radius, angle);
-      state.tokens.push({ x: p.x, y: p.y, taken: false });
-    }
-  }
-
-  class Enemy {
-    constructor(ringName, startAngle, speed) {
-      this.ringName = ringName; // 'grass' or 'water'
-      this.r = RINGS[ringName];
-      this.a = startAngle;
-      this.speed = speed; // radians per frame
-      this.x = 0; this.y = 0;
-      this.updatePos();
-    }
-    updatePos() {
-      const p = ringPoint(this.r, this.a);
-      this.x = p.x; this.y = p.y;
-    }
-    step() {
-      this.a += this.speed;
-      // wrap
-      if (this.a > Math.PI * 2) this.a -= Math.PI * 2;
-      if (this.a < 0) this.a += Math.PI * 2;
-      this.updatePos();
-    }
-    draw() { drawCrab(this.x, this.y); }
-  }
-
-  function spawnEnemies() {
-    state.enemies.length = 0;
-    for (let i = 0; i < ENEMY_COUNT; i++) {
-      const ringName = ENEMY_PATROLS[i % ENEMY_PATROLS.length];
-      const a = random(0, Math.PI * 2);
-      const dir = Math.random() < 0.5 ? -1 : 1;
-      const s = dir * (ENEMY_BASE_SPEED + random(0, ENEMY_SPEED_JITTER));
-      state.enemies.push(new Enemy(ringName, a, s));
-    }
-  }
-
-  function resetPlayer() {
-    state.player.x = C.x;
-    state.player.y = C.y;
-  }
-
-  function respawn() {
-    resetPlayer();
-    setStatus(`Ouch! -1 life`, '#c62828');
-  }
-
-  // ---------- Input ----------
-  const keys = new Set();
-  window.addEventListener('keydown', (e) => {
-    const k = e.key.toLowerCase();
-    if ('wasd'.includes(k) || ['arrowup','arrowdown','arrowleft','arrowright'].includes(k)) {
-      e.preventDefault();
-    }
-    keys.add(k);
+  // isometric helpers
+  const isoToScreen = (ix, iy, iz = 0) => ({
+    x: (ix - iy) * (TILE_W/2),
+    y: (ix + iy) * (TILE_H/2) - iz
   });
-  window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
-  // touch / drag
-  let dragging = false, dragStart = null;
-  function pointerPos(ev) {
-    const r = canvas.getBoundingClientRect();
-    const x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
-    const y = (ev.touches ? ev.touches[0].clientY : ev.clientY) - r.top;
-    return { x: clamp(x, 0, CANVAS_SIZE), y: clamp(y, 0, CANVAS_SIZE) };
-  }
-  canvas.addEventListener('pointerdown', (e) => { dragging = true; dragStart = pointerPos(e); });
-  canvas.addEventListener('pointerup',   ()  => { dragging = false; dragStart = null; });
-  canvas.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const p = pointerPos(e);
-    const dx = p.x - (dragStart?.x ?? p.x);
-    const dy = p.y - (dragStart?.y ?? p.y);
-    state.player.x = clamp(state.player.x + dx * 0.05, C.x - RINGS.water + 8, C.x + RINGS.water - 8);
-    state.player.y = clamp(state.player.y + dy * 0.05, C.y - RINGS.water + 8, C.y + RINGS.water - 8);
-    dragStart = p;
-  }, { passive: true });
+  class IsoScene extends Phaser.Scene {
+    constructor(){ super('iso'); }
 
-  // ---------- Update ----------
-  function update() {
-    // keyboard movement
-    let vx = 0, vy = 0;
-    if (keys.has('arrowleft') || keys.has('a')) vx -= PLAYER_SPEED;
-    if (keys.has('arrowright')|| keys.has('d')) vx += PLAYER_SPEED;
-    if (keys.has('arrowup')   || keys.has('w')) vy -= PLAYER_SPEED;
-    if (keys.has('arrowdown') || keys.has('s')) vy += PLAYER_SPEED;
-    if (vx || vy) {
-      state.player.x = clamp(state.player.x + vx, C.x - RINGS.water + 8, C.x + RINGS.water - 8);
-      state.player.y = clamp(state.player.y + vy, C.y - RINGS.water + 8, C.y + RINGS.water - 8);
+    preload(){}
+
+    create(){
+      // Fit canvas to parent #game
+      const parent = document.getElementById('game');
+      const w = parent.clientWidth;
+      const h = parent.clientHeight;
+
+      this.cameras.main.setBackgroundColor(0x000000); // hidden by container style
+      this.center = new Phaser.Math.Vector2(w/2, h/2 + 40);
+
+      // Group/containers
+      this.world = this.add.container(this.center.x, this.center.y);
+
+      // Create a very simple round island mask (just for vibe)
+      this._drawBackdrop();
+
+      // Build diamond tiles
+      this._buildTiles();
+
+      // Entities
+      this.player = this._spawnPlayer(6, 6);
+      this.coins  = this._scatterCoins(7);
+      this.crabs  = this._spawnCrabs(3);
+
+      // Input
+      this.cursors = this.input.keyboard.createCursorKeys();
+      this.wasd = this.input.keyboard.addKeys('W,A,S,D');
+
+      // Swipe / tap: compute direction vector to last pointer position
+      this.pointer = null;
+      this.input.on('pointerdown', (p)=> this.pointer = p);
+      this.input.on('pointerup', ()=> this.pointer = null);
+      this.input.on('pointermove', (p)=> { if(this.pointer) this.pointer = p; });
+
+      hud.status('Ready.');
+      hud.score(); hud.lives();
+
+      // Camera little float
+      this.tweens.add({
+        targets: this.world,
+        y: this.center.y + 6,
+        duration: 1800,
+        yoyo: true, repeat:-1, ease:'sine.inOut'
+      });
     }
 
-    // enemies patrol
-    for (const e of state.enemies) e.step();
-
-    // collisions: coins
-    for (const t of state.tokens) {
-      if (!t.taken && dist(t, state.player) < COLLIDE_RADIUS) {
-        t.taken = true;
-        state.score++;
-        setScore();
-        setStatus('Nice! +1 MrPi token', '#2e7d32');
-      }
+    _drawBackdrop(){
+      const g = this.add.graphics();
+      g.fillStyle(0xffffff, 1);
+      // soft vignette edges drawn by CSS shadows — nothing else needed here
     }
 
-    // collisions: enemies
-    for (const e of state.enemies) {
-      if (dist(e, state.player) < COLLIDE_RADIUS) {
-        // Hit!
-        state.player.lives--;
-        if (state.player.lives <= 0) {
-          setStatus('Game Over!', '#c62828');
-          stop();
-          return;
-        } else {
-          respawn();
+    _buildTiles(){
+      const g = this.add.graphics();
+      const ringR = 4.5; // where “water/grass/sand” color rings will change
+
+      for(let y=0;y<MAP_H;y++){
+        for(let x=0;x<MAP_W;x++){
+          // distance from center for tint rings
+          const dx = x - MAP_W/2 + 0.5;
+          const dy = y - MAP_H/2 + 0.5;
+          const d = Math.hypot(dx,dy);
+
+          let color;
+          if (d > ringR+2) color = 0xd0ecff;     // pale water
+          else if (d > ringR) color = 0xa5d6ff;  // deeper water ring
+          else if (d > ringR-2) color = 0x53a86a;// grass ring
+          else color = 0xe8c98e;                 // sand center
+
+          const p = isoToScreen(x, y);
+          g.fillStyle(color, 1);
+          g.beginPath();
+          // draw diamond tile
+          g.moveTo(this.center.x + p.x,                 this.center.y + p.y);
+          g.lineTo(this.center.x + p.x + TILE_W/2,      this.center.y + p.y + TILE_H/2);
+          g.lineTo(this.center.x + p.x,                 this.center.y + p.y + TILE_H);
+          g.lineTo(this.center.x + p.x - TILE_W/2,      this.center.y + p.y + TILE_H/2);
+          g.closePath();
+          g.fill();
         }
       }
+
+      // One simple “tree”
+      const t = isoToScreen(8, 7);
+      const tree = this.add.container(this.center.x + t.x, this.center.y + t.y + TILE_H/2);
+      const trunk = this.add.rectangle(0, 0, 10, 24, 0x6b4c2e).setOrigin(0.5,1);
+      const crown = this.add.ellipse(0, -22, 90, 60, 0x2f8c46).setStrokeStyle(4, 0x246a36);
+      tree.add([crown, trunk]);
+      this.world.add(tree);
     }
 
-    // win?
-    if (state.score >= TOKEN_COUNT) {
-      setStatus('Victory! You collected all tokens!', '#1565c0');
-      stop();
-      return;
+    _spawnPlayer(gx, gy){
+      const p = this.add.container(0,0);
+      const face = this.add.circle(0, -10, 12, 0xffffff).setStrokeStyle(3,0x222222);
+      const hat  = this.add.rectangle(0, -22, 26, 8, 0x1d2330).setOrigin(0.5,1);
+      const brim = this.add.rectangle(0, -22, 34, 4, 0x1d2330).setOrigin(0.5,0.5);
+      const eyeL = this.add.circle(-6, -12, 3, 0x111111);
+      const eyeR = this.add.circle( 6, -12, 3, 0x111111);
+      const tux  = this.add.ellipse(0, 6, 24, 28, 0x1b2a38);
+      p.add([tux, face, hat, brim, eyeL, eyeR]);
+
+      p.gx = gx; p.gy = gy; p.iz = 0;
+      p.speed = 6; // tiles per second
+      p.target = {gx, gy};
+      this._placeIso(p);
+      this.world.add(p);
+
+      // bobbing
+      this.tweens.add({ targets:p, y: '+=3', duration: 800, yoyo:true, repeat:-1, ease:'sine.inOut' });
+      return p;
+    }
+
+    _placeIso(obj){
+      const s = isoToScreen(obj.gx, obj.gy, obj.iz);
+      obj.x = s.x; obj.y = s.y;
+    }
+
+    _scatterCoins(n){
+      const group = this.add.group();
+      let placed = 0;
+      while(placed < n){
+        const gx = Phaser.Math.Between(2, MAP_W-3);
+        const gy = Phaser.Math.Between(2, MAP_H-3);
+        // avoid player start
+        if (gx === 6 && gy === 6) continue;
+
+        const c = this.add.container(0,0);
+        const s = this.add.circle(0,0, 8, 0xf2b20c).setStrokeStyle(3, 0x9a6a00);
+        const shine = this.add.arc(0,-3, 6, 300, 20, false, 0xffffff, 0.85);
+        c.add([s, shine]);
+        c.gx = gx; c.gy = gy; c.iz = 2;
+        this._placeIso(c);
+        this.world.add(c);
+        group.add(c);
+
+        this.tweens.add({targets:c, y:'-=4', duration:1000, yoyo:true, repeat:-1, ease:'sine.inOut'});
+        placed++;
+      }
+      return group;
+    }
+
+    _spawnCrabs(count){
+      const g = this.add.group();
+      for(let i=0;i<count;i++){
+        const pathR = Phaser.Math.Between(3, 4); // ring to patrol
+        let theta = Phaser.Math.FloatBetween(0, Math.PI*2);
+        const crab = this.add.container(0,0);
+        const body = this.add.circle(0,0,10,0xe24b3c).setStrokeStyle(3,0xb13528);
+        const eye1 = this.add.circle(-4,-6,2,0xffffff).setStrokeStyle(2,0x000000);
+        const eye2 = this.add.circle( 4,-6,2,0xffffff).setStrokeStyle(2,0x000000);
+        const dot1 = this.add.circle(-4,-6,1,0x000000);
+        const dot2 = this.add.circle( 4,-6,1,0x000000);
+        crab.add([body, eye1, eye2, dot1, dot2]);
+        crab.theta = theta; crab.r = pathR;
+        crab.speed = 0.8 + Math.random()*0.6; // radians/sec
+        this._placeCrab(crab);
+        this.world.add(crab);
+        g.add(crab);
+
+        this.tweens.add({targets:crab, y:'+=2', duration:700, yoyo:true, repeat:-1, ease:'sine.inOut'});
+      }
+      return g;
+    }
+    _placeCrab(crab){
+      // convert polar ring position into grid approx (centered)
+      const cx = MAP_W/2, cy = MAP_H/2;
+      const gx = cx + crab.r*Math.cos(crab.theta);
+      const gy = cy + crab.r*Math.sin(crab.theta);
+      const s = isoToScreen(gx, gy, 1);
+      crab.x = s.x; crab.y = s.y;
+      crab.gx = gx; crab.gy = gy;
+    }
+
+    update(time, dtMS){
+      const dt = dtMS/1000;
+
+      // keyboard
+      let dx=0, dy=0;
+      if (this.cursors.left.isDown || this.wasd.A.isDown)  dx -= 1;
+      if (this.cursors.right.isDown|| this.wasd.D.isDown)  dx += 1;
+      if (this.cursors.up.isDown   || this.wasd.W.isDown)  dy -= 1;
+      if (this.cursors.down.isDown || this.wasd.S.isDown)  dy += 1;
+
+      // swipe / drag
+      if (this.pointer){
+        // vector from player screen pos to pointer
+        const ps = isoToScreen(this.player.gx, this.player.gy);
+        const px = this.center.x + ps.x;
+        const py = this.center.y + ps.y;
+        const vx = this.pointer.x - px;
+        const vy = this.pointer.y - py;
+        // convert screen vector toward iso axes (roughly)
+        const toIsoX =  (vx/(TILE_W/2) - vy/(TILE_H/2))/2;
+        const toIsoY = -(vx/(TILE_W/2) + vy/(TILE_H/2))/2;
+        dx += Phaser.Math.Clamp(toIsoX, -1, 1);
+        dy += Phaser.Math.Clamp(toIsoY, -1, 1);
+      }
+
+      // normalize
+      if (dx || dy){
+        const len = Math.hypot(dx,dy) || 1;
+        dx/=len; dy/=len;
+        this.player.gx = Phaser.Math.Clamp(this.player.gx + dx*this.player.speed*dt, 1, MAP_W-2);
+        this.player.gy = Phaser.Math.Clamp(this.player.gy + dy*this.player.speed*dt, 1, MAP_H-2);
+        this._placeIso(this.player);
+      }
+
+      // wobble “jump” when moving
+      this.player.iz = (dx||dy) ? 6*Math.abs(Math.sin(time*0.01)) : 0;
+
+      // coin collection
+      this.coins.children.iterate((c)=>{
+        if (!c) return;
+        const d = Phaser.Math.Distance.Between(c.gx, c.gy, this.player.gx, this.player.gy);
+        if (d < 0.7){
+          c.destroy();
+          score++; hud.score();
+          hud.status('Nice! +1 MrPi token');
+          this.tweens.addCounter({
+            from:0, to:100, duration:350,
+            onUpdate: t=>{
+              const k = t.getValue()/100;
+              this.cameras.main.setZoom(1+0.02*Math.sin(k*Math.PI));
+            },
+            onComplete: ()=> this.cameras.main.setZoom(1)
+          });
+        }
+      });
+
+      // crabs patrol + collision
+      this.crabs.children.iterate((crab)=>{
+        crab.theta += crab.speed*dt;
+        this._placeCrab(crab);
+        const d = Phaser.Math.Distance.Between(crab.gx, crab.gy, this.player.gx, this.player.gy);
+        if (d < 0.7){
+          // hit once then give brief i-frames
+          if (!crab._cool){
+            crab._cool = true;
+            this.time.delayedCall(600, ()=> crab._cool=false);
+            lives = Math.max(0, lives-1); hud.lives();
+            hud.status('Ouch! Crab got you.');
+            this.tweens.add({targets:this.world, x:this.center.x+6, duration:60, yoyo:true, repeat:6,
+              onComplete:()=> this.world.x = this.center.x});
+          }
+        }
+      });
     }
   }
 
-  // ---------- Draw ----------
-  function drawIsland() {
-    // water ring
-    ctx.fillStyle = '#cfe9ff';
-    ctx.beginPath(); ctx.arc(C.x, C.y, RINGS.water, 0, Math.PI * 2); ctx.fill();
-    // grass ring
-    ctx.fillStyle = '#3aa15b';
-    ctx.beginPath(); ctx.arc(C.x, C.y, RINGS.grass, 0, Math.PI * 2); ctx.fill();
-    // sand
-    const sandGrad = ctx.createRadialGradient(C.x, C.y, 20, C.x, C.y, RINGS.inner);
-    sandGrad.addColorStop(0, '#f8e1a0');
-    sandGrad.addColorStop(1, '#e6c77a');
-    ctx.fillStyle = sandGrad;
-    ctx.beginPath(); ctx.arc(C.x, C.y, RINGS.inner, 0, Math.PI * 2); ctx.fill();
-    // a simple tree
-    ctx.fillStyle = '#2f7d32';
-    ctx.beginPath(); ctx.arc(C.x + 60, C.y - 10, 35, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#5c3d1e';
-    ctx.fillRect(C.x + 57, C.y + 20, 6, 20);
-  }
-
-  function render() {
-    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    drawIsland();
-
-    // tokens
-    for (const t of state.tokens) if (!t.taken) drawToken(t.x, t.y);
-    // enemies
-    for (const e of state.enemies) e.draw();
-    // player
-    drawMrPi(state.player.x, state.player.y);
-  }
-
-  // ---------- Loop ----------
-  let raf = null;
-  function frame() {
-    update();
-    render();
-    raf = requestAnimationFrame(frame);
-  }
-  function start() {
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(frame);
-  }
-  function stop() { cancelAnimationFrame(raf); }
-
-  // ---------- Init ----------
-  function resetGame() {
-    state.score = 0;
-    state.player.lives = START_LIVES;
-    resetPlayer();
-    spawnTokens();
-    spawnEnemies();
-    setScore();
-    setStatus('Ready.');
-    start();
-  }
-
-  // Start immediately
-  resetGame();
-
-  // Expose a tiny API for future buttons/debug
-  window.MrPiGame = {
-    reset: resetGame,
-    addEnemy() { state.enemies.push(new Enemy('grass', random(0, Math.PI*2), ENEMY_BASE_SPEED)); },
+  // ----- Boot Phaser -----
+  const parent = document.getElementById('game');
+  const config = {
+    type: Phaser.AUTO,
+    parent: 'game',
+    width: parent.clientWidth,
+    height: parent.clientHeight,
+    backgroundColor: '#bfe6ff',
+    scene: [IsoScene],
+    physics: { default: 'arcade' } // (unused but fine)
   };
+  const game = new Phaser.Game(config);
+
+  // Resize with container
+  window.addEventListener('resize', () => {
+    const w = parent.clientWidth;
+    const h = parent.clientHeight;
+    game.scale.resize(w, h);
+  });
 })();
