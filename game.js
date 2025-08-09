@@ -1,226 +1,251 @@
-// ===== Utility: error overlay so we see problems on phone =====
-window.addEventListener('error', (e) => {
-  const box = document.getElementById('errorBox');
-  box.textContent = 'Error: ' + (e?.message || e);
-  box.hidden = false;
-});
+/* MrPi Island Quest — clean 2D starter
+   Controls: Arrow keys / WASD, or swipe/drag inside the canvas.
+*/
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d', { alpha: false });
 
-// ===== Canvas + sizing =====
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d', { alpha: false });
-
-// Keep a logical square, scale to device width
-function fitCanvas() {
-  const parent = canvas.parentElement;
-  const size = Math.min(parent.clientWidth, 520); // cap so it doesn’t get huge
-  canvas.style.width = size + 'px';
-}
-window.addEventListener('resize', fitCanvas);
-fitCanvas();
-
-// ===== HUD refs =====
-const scoreEl = document.getElementById('score');
-const goalEl  = document.getElementById('goal');
-const livesEl = document.getElementById('lives');
-const statusEl= document.getElementById('status');
-
-// ===== Assets (load safe; fall back to shapes) =====
-const imgPlayer = new Image();
-const imgCoin   = new Image();
-let playerImgOk = false, coinImgOk = false;
-
-imgPlayer.onload = () => { playerImgOk = true; };
-imgPlayer.onerror= () => { playerImgOk = false; };
-imgCoin.onload   = () => { coinImgOk = true; };
-imgCoin.onerror  = () => { coinImgOk = false; };
-
-// filenames must exist in repo root:
-imgPlayer.src = 'mrpi_logo_transparent.png';
-imgCoin.src   = 'mrpi_token_transparent.png';
-
-// ===== Game state =====
-const W = canvas.width;
-const H = canvas.height;
-
-const island = {
-  cx: W/2, cy: H/2,
-  sandR: 110, grassR: 160, surfR: 200
-};
-
-const player = {
-  x: island.cx, y: island.cy,
-  r: 14,
-  speed: 2.1, // px per frame
-};
-
-const tokens = [];
-const GOAL = 7;
-goalEl.textContent = GOAL;
-let score = 0;
-let lives = 3;
-let statusMsg = 'Explore the island…';
-
-// spawn tokens in a donut around the sand
-function spawnTokens(n=GOAL){
-  tokens.length = 0;
-  for(let i=0;i<n;i++){
-    const a = Math.random()*Math.PI*2;
-    const r = lerp(island.sandR+16, island.grassR-12, Math.random());
-    tokens.push({
-      x: island.cx + Math.cos(a)*r,
-      y: island.cy + Math.sin(a)*r,
-      r: 11,
-      alive: true
-    });
+  // Device-pixel sharpness
+  function fitDPR() {
+    const cssSize = Math.min(canvas.parentElement.clientWidth * 0.94, 512);
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    canvas.style.width = cssSize + 'px';
+    canvas.style.height = cssSize + 'px';
+    canvas.width = Math.round(cssSize * dpr);
+    canvas.height = Math.round(cssSize * dpr);
+    scale = canvas.width; // keep square
   }
-}
-spawnTokens();
+  window.addEventListener('resize', fitDPR);
 
-// ===== Input: drag / swipe / tap to set a target =====
-let target = { x: player.x, y: player.y };
-let dragging = false;
+  // Assets
+  const playerImg = new Image();
+  playerImg.src = 'mrpi_logo_transparent.png';
+  const coinImg = new Image();
+  coinImg.src = 'mrpi_token_transparent.png';
 
-function setTargetFromEvent(e){
-  const rect = canvas.getBoundingClientRect();
-  const touch = e.touches ? e.touches[0] : e;
-  target.x = (touch.clientX - rect.left) * (canvas.width / rect.width);
-  target.y = (touch.clientY - rect.top ) * (canvas.height/ rect.height);
-}
+  // World
+  let scale = canvas.width;
+  const world = {
+    size: 1, // normalized 1x1 square
+    island: { center: {x: 0.5, y: 0.5}, sandR: 0.23, grassR: 0.38, shallowR: 0.47 },
+  };
 
-canvas.addEventListener('pointerdown', (e)=>{ dragging = true; setTargetFromEvent(e); });
-canvas.addEventListener('pointermove', (e)=>{ if(dragging) setTargetFromEvent(e); });
-window.addEventListener('pointerup', ()=> dragging = false);
+  const player = {
+    x: 0.5, y: 0.5,
+    r: 0.035,              // radius in normalized space
+    speed: 0.5,            // per second (normalized units)
+    vx: 0, vy: 0
+  };
 
-// keyboard arrows for desktop
-const keys = new Set();
-window.addEventListener('keydown', e=> keys.add(e.key));
-window.addEventListener('keyup',   e=> keys.delete(e.key));
+  const GOAL = 7;
+  const coins = [];
+  let score = 0;
+  const scoreEl = document.getElementById('score');
+  document.getElementById('goal').textContent = GOAL;
+  const statusEl = document.getElementById('status');
 
-// ===== Helpers =====
-function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
-function dist(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return Math.hypot(dx,dy); }
-function lerp(a,b,t){ return a + (b-a)*t; }
-
-// ===== Update loop =====
-let last = performance.now();
-function tick(now){
-  const dt = Math.min(40, now-last); // ms
-  last = now;
-
-  // keyboard movement (overrides target)
-  let vx = 0, vy = 0;
-  if(keys.has('ArrowLeft'))  vx -= 1;
-  if(keys.has('ArrowRight')) vx += 1;
-  if(keys.has('ArrowUp'))    vy -= 1;
-  if(keys.has('ArrowDown'))  vy += 1;
-
-  if(vx || vy){
-    const len = Math.hypot(vx,vy) || 1;
-    player.x += (vx/len) * player.speed * (dt/16.7);
-    player.y += (vy/len) * player.speed * (dt/16.7);
-  } else {
-    // move toward target
-    const dx = target.x - player.x, dy = target.y - player.y;
-    const d  = Math.hypot(dx,dy);
-    if(d > 0.5){
-      player.x += (dx/d) * player.speed * (dt/16.7);
-      player.y += (dy/d) * player.speed * (dt/16.7);
+  // Spawn coins on the sand ring
+  function spawnCoins(n = GOAL) {
+    coins.length = 0;
+    const { center, sandR, grassR } = world.island;
+    for (let i = 0; i < n; i++) {
+      let ok = false, px, py;
+      for (let tries = 0; tries < 50 && !ok; tries++) {
+        const ang = Math.random() * Math.PI * 2;
+        const rad = sandR + (grassR - sandR) * Math.random() * 0.9;
+        px = center.x + Math.cos(ang) * rad;
+        py = center.y + Math.sin(ang) * rad;
+        ok = true;
+        // keep coins apart
+        for (const c of coins) {
+          const d2 = (c.x - px)**2 + (c.y - py)**2;
+          if (d2 < 0.015**2) { ok = false; break; }
+        }
+      }
+      coins.push({ x: px, y: py, r: 0.028, a: Math.random()*Math.PI*2 });
     }
   }
 
-  // stay on sand (soft clamp to circle)
-  const dx = player.x - island.cx, dy = player.y - island.cy;
-  const d  = Math.hypot(dx,dy);
-  if(d > island.sandR-8){
-    const k = (island.sandR-8) / d;
-    player.x = island.cx + dx * k;
-    player.y = island.cy + dy * k;
+  function resetGame() {
+    player.x = 0.5; player.y = 0.5; player.vx = 0; player.vy = 0;
+    score = 0; scoreEl.textContent = score; statusEl.textContent = 'Ready.';
+    spawnCoins(GOAL);
   }
 
-  // collect tokens
-  for(const t of tokens){
-    if(!t.alive) continue;
-    if(dist(player.x,player.y,t.x,t.y) < (player.r + t.r)){
-      t.alive = false;
-      score++;
-      statusMsg = 'Nice! +1 MrPi token';
+  // Input: keyboard
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (['arrowup','w','arrowdown','s','arrowleft','a','arrowright','d'].includes(k)) {
+      keys[k] = true; e.preventDefault();
     }
+  }, {passive:false});
+  window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+  // Input: swipe/drag -> velocity
+  let touchId = null, touchStart = null;
+  function normFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const cx = (('clientX' in e) ? e.clientX : e.touches[0].clientX) - rect.left;
+    const cy = (('clientY' in e) ? e.clientY : e.touches[0].clientY) - rect.top;
+    return { x: cx / rect.width, y: cy / rect.height };
+  }
+  canvas.addEventListener('pointerdown', e => {
+    touchId = e.pointerId; touchStart = normFromEvent(e);
+    canvas.setPointerCapture(touchId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (touchId === e.pointerId && touchStart) {
+      const now = normFromEvent(e);
+      const dx = now.x - touchStart.x;
+      const dy = now.y - touchStart.y;
+      const mag = Math.hypot(dx, dy);
+      const max = 0.15;
+      const f = mag > 0 ? Math.min(1, mag / max) : 0;
+      const ang = Math.atan2(dy, dx);
+      player.vx = Math.cos(ang) * player.speed * f;
+      player.vy = Math.sin(ang) * player.speed * f;
+    }
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (touchId === e.pointerId) {
+      player.vx = player.vy = 0;
+      touchId = null; touchStart = null;
+      canvas.releasePointerCapture(e.pointerId);
+    }
+  });
+
+  // Helpers
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  function update(dt) {
+    // Keyboard velocity
+    let ax = 0, ay = 0;
+    if (keys['arrowup'] || keys['w']) ay -= 1;
+    if (keys['arrowdown'] || keys['s']) ay += 1;
+    if (keys['arrowleft'] || keys['a']) ax -= 1;
+    if (keys['arrowright'] || keys['d']) ax += 1;
+    if (ax || ay) {
+      const m = Math.hypot(ax, ay) || 1;
+      player.vx = (ax / m) * player.speed;
+      player.vy = (ay / m) * player.speed;
+    } else if (!touchStart) {
+      // if not dragging, slow to stop
+      player.vx *= 0.9; player.vy *= 0.9;
+      if (Math.hypot(player.vx, player.vy) < 0.0005) player.vx = player.vy = 0;
+    }
+
+    // Integrate & clamp within shallow water circle
+    const { center, shallowR } = world.island;
+    player.x = clamp(player.x + player.vx * dt, center.x - shallowR, center.x + shallowR);
+    player.y = clamp(player.y + player.vy * dt, center.y - shallowR, center.y + shallowR);
+
+    // Snap back inside circle border if pushed out
+    const dx = player.x - center.x;
+    const dy = player.y - center.y;
+    const dist = Math.hypot(dx, dy);
+    const maxR = shallowR - player.r * 0.6;
+    if (dist > maxR) {
+      const k = maxR / dist;
+      player.x = center.x + dx * k;
+      player.y = center.y + dy * k;
+    }
+
+    // Collect coins
+    for (const c of coins) {
+      if (!c.collected) {
+        const d = Math.hypot(player.x - c.x, player.y - c.y);
+        if (d < player.r + c.r * 0.85) {
+          c.collected = true;
+          score++; scoreEl.textContent = score;
+          statusEl.textContent = 'Nice! +1 MrPi token';
+        }
+      }
+    }
+
+    // Win
+    if (score >= GOAL) statusEl.textContent = '🎉 You collected them all!';
   }
 
-  // update HUD
-  scoreEl.textContent = score;
-  livesEl.textContent = lives;
-  statusEl.textContent = statusMsg;
+  function draw() {
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
 
-  draw();
-  requestAnimationFrame(tick);
-}
+    // ocean gradient
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#dff1ff'); g.addColorStop(1, '#cfe9ff');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
 
-// ===== Draw =====
-function draw(){
-  // sky
-  ctx.fillStyle = '#cbecff';
-  ctx.fillRect(0,0,W,H);
+    // island rings (normalized -> px)
+    const toPx = v => v * w;
+    const { center, sandR, grassR, shallowR } = world.island;
 
-  // ocean rings
-  radialCircle(island.surfR, '#bfe9ff');
-  radialCircle(island.grassR+10, '#8cd0f6');
+    // shallow water
+    ctx.fillStyle = '#9ad2ff';
+    ctx.beginPath();
+    ctx.arc(toPx(center.x), toPx(center.y), toPx(shallowR), 0, Math.PI*2);
+    ctx.fill();
 
-  // grass ring
-  ctx.fillStyle = '#3ca654';
-  ctx.beginPath(); ctx.arc(island.cx, island.cy, island.grassR, 0, Math.PI*2); ctx.fill();
+    // grass
+    ctx.fillStyle = '#3ea652';
+    ctx.beginPath();
+    ctx.arc(toPx(center.x), toPx(center.y), toPx(grassR), 0, Math.PI*2);
+    ctx.fill();
 
-  // sand
-  const sandGrad = ctx.createRadialGradient(island.cx, island.cy, island.sandR*0.2, island.cx, island.cy, island.sandR);
-  sandGrad.addColorStop(0, '#f5d79a');
-  sandGrad.addColorStop(1, '#eec87a');
-  ctx.fillStyle = sandGrad;
-  ctx.beginPath(); ctx.arc(island.cx, island.cy, island.sandR, 0, Math.PI*2); ctx.fill();
+    // sand
+    const sandGrad = ctx.createRadialGradient(
+      toPx(center.x), toPx(center.y), toPx(sandR*0.2),
+      toPx(center.x), toPx(center.y), toPx(sandR)
+    );
+    sandGrad.addColorStop(0, '#f6dc9c');
+    sandGrad.addColorStop(1, '#e8c87d');
+    ctx.fillStyle = sandGrad;
+    ctx.beginPath();
+    ctx.arc(toPx(center.x), toPx(center.y), toPx(sandR), 0, Math.PI*2);
+    ctx.fill();
 
-  // simple tree
-  drawTree(island.cx+58, island.cy-8);
+    // (optional) tree
+    ctx.fillStyle = '#2b7a3f';
+    ctx.beginPath();
+    ctx.arc(toPx(center.x + 0.16), toPx(center.y - 0.02), toPx(0.075), 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#6a421f';
+    ctx.fillRect(toPx(center.x + 0.156), toPx(center.y + 0.02), toPx(0.008), toPx(0.05));
 
-  // tokens
-  for(const t of tokens){
-    if(!t.alive) continue;
-    if(coinImgOk){
-      const s = 26;
-      ctx.drawImage(imgCoin, t.x - s/2, t.y - s/2, s, s);
+    // coins
+    for (const c of coins) {
+      if (c.collected) continue;
+      c.a += 0.04; // tiny spin wobble
+      const size = toPx(c.r) * (1 + Math.sin(c.a)*0.05);
+      ctx.drawImage(
+        coinImg,
+        toPx(c.x) - size, toPx(c.y) - size,
+        size*2, size*2
+      );
+    }
+
+    // player
+    const pSize = toPx(player.r)*2.2;
+    ctx.drawImage(playerImg, toPx(player.x)-pSize/2, toPx(player.y)-pSize*0.95, pSize, pSize);
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.033, (now - last) / 1000); // clamp delta
+    last = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function startWhenReady() {
+    if (playerImg.complete && coinImg.complete) {
+      fitDPR();
+      resetGame();
+      requestAnimationFrame(loop);
     } else {
-      ctx.fillStyle = '#f7b500';
-      ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = '#b07800'; ctx.lineWidth = 2; ctx.stroke();
+      setTimeout(startWhenReady, 60);
     }
   }
-
-  // player
-  if(playerImgOk){
-    const s = 28;
-    ctx.drawImage(imgPlayer, player.x - s/2, player.y - s/2, s, s);
-  } else {
-    ctx.fillStyle = '#1f3850';
-    ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
-  }
-
-  // frame vignette (subtle)
-  const g = ctx.createRadialGradient(W/2,H/2, W*0.2, W/2,H/2, W*0.65);
-  g.addColorStop(0,'rgba(0,0,0,0)');
-  g.addColorStop(1,'rgba(0,0,0,.06)');
-  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
-}
-
-function radialCircle(r, color){
-  ctx.fillStyle = color;
-  ctx.beginPath(); ctx.arc(island.cx, island.cy, r, 0, Math.PI*2); ctx.fill();
-}
-
-function drawTree(x,y){
-  ctx.fillStyle = '#2c7a3e';
-  ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#6b3d19';
-  ctx.fillRect(x-3, y+20, 6, 18);
-}
-
-// start!
-requestAnimationFrame(tick);
+  startWhenReady();
+})();
