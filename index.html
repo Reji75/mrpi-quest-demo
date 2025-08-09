@@ -1,32 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MrPi Island Quest</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MrPi Island Quest</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div id="game-container">
-        <header>
-            <img src="mrpi_logo_transparent.png" alt="MrPi Logo" class="logo">
-            <h1>MrPi Island Quest 🌴</h1>
-        </header>
-        
-        <canvas id="gameCanvas"></canvas>
-        
-        <div id="controls">
-            <button id="up">⬆️</button>
-            <div>
-                <button id="left">⬅️</button>
-                <button id="down">⬇️</button>
-                <button id="right">➡️</button>
-            </div>
-        </div>
+  <header>
+    <h1>MrPi Island Quest 🌴</h1>
+    <p class="hint">
+      Swipe or tap inside the game to move MrPi. Keyboard arrows work on desktop.
+    </p>
+  </header>
 
-        <p id="score">Score: 0 / 5</p>
-        <p id="message"></p>
+  <main>
+    <div class="game-shell">
+      <canvas id="game" width="620" height="620" aria-label="Game area"></canvas>
+      <div id="score">Score: 0 / 5</div>
     </div>
-    <script src="script.js"></script>
+
+    <!-- Fallback touch controls (auto-hidden on desktop) -->
+    <div id="controls" aria-hidden="true">
+      <button class="btn up" data-dir="up">↑</button>
+      <div class="row">
+        <button class="btn left"  data-dir="left">←</button>
+        <button class="btn down"  data-dir="down">↓</button>
+        <button class="btn right" data-dir="right">→</button>
+      </div>
+    </div>
+
+    <button id="play-again" hidden>Play Again</button>
+  </main>
+
+  <script src="script.js"></script>
 </body>
 </html>
