@@ -2,21 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MrPi Island Quest 🌴</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MrPi Island Quest 🌴 — Free Roam Demo</title>
   <link rel="stylesheet" href="styles.css" />
+  <!-- Phaser 3 -->
+  <script src="https://unpkg.com/phaser@3.70.0/dist/phaser.min.js"></script>
 </head>
 <body>
-  <main class="wrap">
-    <h1>MrPi Island Quest <span class="palm">🌴</span></h1>
-    <p class="hint">Swipe/tap in the play area to move MrPi. Keyboard arrows work on desktop.</p>
+  <header>
+    <h1>MrPi Island Quest <span class="emoji">🌴</span></h1>
+    <p class="hint">Swipe / drag in the play area to move. Keyboard arrows work on desktop.</p>
+  </header>
 
-    <section class="stage">
-      <canvas id="game" width="680" height="680" aria-label="Game canvas"></canvas>
-    </section>
-
-    <div id="score" class="score">Score: 0 / 7</div>
+  <main>
+    <div id="game-wrap">
+      <div id="game"></div>
+      <div id="hud">
+        <div><strong>Score:</strong> <span id="score">0</span></div>
+        <div><strong>Lives:</strong> <span id="lives">3</span></div>
+        <div><strong>Status:</strong> <span id="status">Explore the island…</span></div>
+      </div>
+    </div>
   </main>
+
+  <footer class="footnote">Demo build — no downloads or tracking.</footer>
 
   <script src="game.js"></script>
 </body>
