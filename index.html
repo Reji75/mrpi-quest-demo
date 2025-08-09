@@ -1,44 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MrPi Island Quest</title>
+  <title>MrPi Island Quest 🌴</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header>
+  <header class="wrap">
     <h1>MrPi Island Quest 🌴</h1>
-    <p class="subtitle">Swipe/tap in the play area to move MrPi. Keyboard arrows work on desktop.</p>
+    <p class="sub">Swipe/tap in the play area to move MrPi. Keyboard arrows work on desktop.</p>
   </header>
 
   <!-- Intro / cutscene -->
-  <div id="intro" class="overlay show">
-    <div class="card">
-      <p id="introText"></p>
-      <button id="introBtn" class="btn">I'm on it!</button>
+  <div id="intro" class="intro">
+    <div class="intro-card">
+      <div id="introText" class="intro-text"></div>
+      <button id="introBtn" class="btn-cta">I'm on it!</button>
     </div>
   </div>
 
-  <main>
-    <div class="canvas-wrap">
-      <canvas id="game" width="720" height="480"></canvas>
-      <div id="score">Score: <span id="scoreVal">0</span> / <span id="scoreMax">0</span></div>
+  <main class="wrap">
+    <div class="stage">
+      <canvas id="game" width="360" height="360" aria-label="MrPi Island Quest"></canvas>
     </div>
 
-    <!-- (Optional) on-screen arrows -->
-    <div id="controls" aria-label="touch controls">
-      <div class="row center">
-        <button class="cbtn" data-dir="up">▲</button>
+    <div class="hud">
+      <div id="score" class="score">Score: 0 / 5</div>
+    </div>
+
+    <!-- Optional touch D-pad (mobile) -->
+    <div id="controls" class="controls">
+      <div class="row">
+        <button class="pad" data-dir="up" aria-label="Move up">▲</button>
       </div>
       <div class="row">
-        <button class="cbtn" data-dir="left">◀</button>
-        <button class="cbtn" data-dir="down">▼</button>
-        <button class="cbtn" data-dir="right">▶</button>
+        <button class="pad" data-dir="left" aria-label="Move left">◀</button>
+        <button class="pad" data-dir="down" aria-label="Move down">▼</button>
+        <button class="pad" data-dir="right" aria-label="Move right">▶</button>
       </div>
     </div>
   </main>
 
-  <script src="game.js"></script>
+  <footer class="wrap foot">Demo build — no downloads or tracking.</footer>
+
+  <script src="game.js" defer></script>
 </body>
 </html>
