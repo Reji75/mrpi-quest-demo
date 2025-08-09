@@ -1,182 +1,89 @@
-/* MrPi Island Quest – script.js
-   - Keyboard + mobile buttons
-   - Collect 5 shiny golden MrPi tokens
-   - Works with: index.html (btnUp/Down/Left/Right) + style.css
-*/
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-// ---------- Config ----------
-const CANVAS_SIZE = 320;      // logical game area (square)
-const SPEED = 3;              // movement speed
-const MRPI_SIZE = 48;         // draw size for MrPi
-const TOKEN_SIZE = 42;        // draw size for token
-const TOKENS_TO_WIN = 5;
+canvas.width = 400;
+canvas.height = 400;
 
-// ---------- Canvas (crisp on mobile/retina) ----------
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d', { alpha: false });
-
-function resizeCanvas() {
-  const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-  canvas.width  = CANVAS_SIZE * dpr;
-  canvas.height = CANVAS_SIZE * dpr;
-  // CSS handles responsive layout; we keep logical size stable
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-resizeCanvas();
-addEventListener('resize', resizeCanvas);
-
-// ---------- Assets (make sure these files exist in repo root) ----------
-const mrpiImg = new Image();
-mrpiImg.src = 'mrpi.png';
+// Load Images
+const playerImg = new Image();
+playerImg.src = "mrpi_logo_transparent.png";
 
 const tokenImg = new Image();
-tokenImg.src = 'token.png';
+tokenImg.src = "mrpi_token_transparent.png";
 
-// ---------- Game state ----------
-const mrpi = {
-  x: (CANVAS_SIZE - MRPI_SIZE) / 2,
-  y: (CANVAS_SIZE - MRPI_SIZE) / 2,
-  w: MRPI_SIZE,
-  h: MRPI_SIZE,
-};
+// Player
+let player = { x: 50, y: 50, size: 40, speed: 20 };
 
-let keys = { ArrowUp:false, ArrowDown:false, ArrowLeft:false, ArrowRight:false };
+// Tokens
 let tokens = [];
-let collected = 0;
-let won = false;
-
-// ---------- Helpers ----------
-const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-// Place 5 tokens in non-overlapping spots
-function placeTokens() {
-  tokens = [];
-  const pad = 16;
-  for (let i = 0; i < TOKENS_TO_WIN; i++) {
-    let tries = 0;
-    while (tries++ < 60) {
-      const t = {
-        x: rand(pad, CANVAS_SIZE - pad - TOKEN_SIZE),
-        y: rand(pad + 30, CANVAS_SIZE - pad - TOKEN_SIZE),
-        w: TOKEN_SIZE, h: TOKEN_SIZE, collected: false,
-      };
-      const clashes = tokens.some(o => Math.abs(o.x - t.x) < TOKEN_SIZE && Math.abs(o.y - t.y) < TOKEN_SIZE);
-      if (!clashes) { tokens.push(t); break; }
-    }
-  }
-}
-placeTokens();
-
-// ---------- Input: keyboard ----------
-addEventListener('keydown', e => {
-  if (e.key in keys) { keys[e.key] = true; e.preventDefault(); }
-});
-addEventListener('keyup', e => {
-  if (e.key in keys) { keys[e.key] = false; e.preventDefault(); }
-});
-
-// ---------- Input: mobile buttons ----------
-function bindBtn(id, keyName) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const press = () => { keys[keyName] = true; };
-  const release = () => { keys[keyName] = false; };
-
-  el.addEventListener('touchstart', e => { e.preventDefault(); press(); }, { passive:false });
-  el.addEventListener('touchend',   e => { e.preventDefault(); release(); }, { passive:false });
-  el.addEventListener('mousedown',  press);
-  el.addEventListener('mouseup',    release);
-  el.addEventListener('mouseleave', release);
-}
-bindBtn('btnUp', 'ArrowUp');
-bindBtn('btnDown', 'ArrowDown');
-bindBtn('btnLeft', 'ArrowLeft');
-bindBtn('btnRight','ArrowRight');
-
-// ---------- Update ----------
-function update() {
-  if (won) return;
-
-  let dx = 0, dy = 0;
-  if (keys.ArrowUp)    dy -= 1;
-  if (keys.ArrowDown)  dy += 1;
-  if (keys.ArrowLeft)  dx -= 1;
-  if (keys.ArrowRight) dx += 1;
-  if (dx && dy) { dx *= Math.SQRT1_2; dy *= Math.SQRT1_2; } // normalize diagonal
-
-  mrpi.x = clamp(mrpi.x + dx * SPEED, 0, CANVAS_SIZE - mrpi.w);
-  mrpi.y = clamp(mrpi.y + dy * SPEED, 0, CANVAS_SIZE - mrpi.h);
-
-  // Collect tokens
-  tokens.forEach(t => {
-    if (!t.collected && overlap(mrpi, t)) {
-      t.collected = true;
-      collected++;
-      if (collected >= TOKENS_TO_WIN) won = true;
-    }
-  });
+for (let i = 0; i < 5; i++) {
+    tokens.push({
+        x: Math.random() * (canvas.width - 40),
+        y: Math.random() * (canvas.height - 40),
+        size: 40
+    });
 }
 
-// ---------- Draw ----------
+let score = 0;
+
+// Draw Game
 function draw() {
-  // Background (matches CSS grass vibe)
-  ctx.fillStyle = '#c2f970';
-  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Tokens
-  tokens.forEach(t => {
-    if (!t.collected) {
-      if (tokenImg.complete) {
-        ctx.drawImage(tokenImg, t.x, t.y, t.w, t.h);
-      } else {
-        // fallback circle
-        ctx.fillStyle = '#d4a017';
-        ctx.beginPath();
-        ctx.arc(t.x + t.w/2, t.y + t.h/2, t.w/2, 0, Math.PI*2);
-        ctx.fill();
-      }
-    }
-  });
+    // Player
+    ctx.drawImage(playerImg, player.x, player.y, player.size, player.size);
 
-  // MrPi
-  if (mrpiImg.complete) {
-    ctx.drawImage(mrpiImg, mrpi.x, mrpi.y, mrpi.w, mrpi.h);
-  } else {
-    // fallback square
-    ctx.fillStyle = '#1877f2';
-    ctx.fillRect(mrpi.x, mrpi.y, mrpi.w, mrpi.h);
-  }
+    // Tokens
+    tokens.forEach(token => {
+        ctx.drawImage(tokenImg, token.x, token.y, token.size, token.size);
+    });
 
-  // HUD
-  ctx.fillStyle = '#111';
-  ctx.font = '16px system-ui, -apple-system, Arial';
-  ctx.fillText(`Tokens: ${collected}/${TOKENS_TO_WIN}`, 10, 22);
+    requestAnimationFrame(draw);
+}
+draw();
 
-  // Win overlay
-  if (won) {
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.font = '26px system-ui, -apple-system, Arial';
-    ctx.fillText('🎉 You Win! 🎉', CANVAS_SIZE/2, CANVAS_SIZE/2 - 6);
-    ctx.font = '14px system-ui, -apple-system, Arial';
-    ctx.fillText('Refresh to play again', CANVAS_SIZE/2, CANVAS_SIZE/2 + 20);
-    ctx.textAlign = 'start';
-  }
+// Movement
+function movePlayer(dx, dy) {
+    player.x += dx * player.speed;
+    player.y += dy * player.speed;
+
+    // Prevent going outside canvas
+    player.x = Math.max(0, Math.min(player.x, canvas.width - player.size));
+    player.y = Math.max(0, Math.min(player.y, canvas.height - player.size));
+
+    checkCollision();
 }
 
-// ---------- Main loop ----------
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
-loop();
+// Collision
+function checkCollision() {
+    tokens = tokens.filter(token => {
+        let distX = player.x - token.x;
+        let distY = player.y - token.y;
+        let distance = Math.sqrt(distX * distX + distY * distY);
 
-// Re-place tokens if the screen context changes
-addEventListener('resize', () => {
-  if (!won) placeTokens();
+        if (distance < player.size) {
+            score++;
+            document.getElementById("score").innerText = `Score: ${score} / 5`;
+
+            if (score === 5) {
+                document.getElementById("message").innerText = "🎉 You collected all tokens!";
+            }
+            return false;
+        }
+        return true;
+    });
+}
+
+// Controls
+document.getElementById("up").addEventListener("click", () => movePlayer(0, -1));
+document.getElementById("down").addEventListener("click", () => movePlayer(0, 1));
+document.getElementById("left").addEventListener("click", () => movePlayer(-1, 0));
+document.getElementById("right").addEventListener("click", () => movePlayer(1, 0));
+
+// Keyboard Controls
+document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp") movePlayer(0, -1);
+    if (e.key === "ArrowDown") movePlayer(0, 1);
+    if (e.key === "ArrowLeft") movePlayer(-1, 0);
+    if (e.key === "ArrowRight") movePlayer(1, 0);
 });
