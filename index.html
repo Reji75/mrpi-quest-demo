@@ -7,34 +7,24 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header>
-    <h1>MrPi Island Quest 🌴</h1>
-    <p class="sub">
-      Swipe or tap inside the game to move MrPi. Keyboard arrows work on desktop.
-    </p>
-  </header>
+  <main class="wrap">
+    <header>
+      <h1>MrPi Island Quest 🌴</h1>
+      <p class="hint">Swipe or tap inside the game to move MrPi. Keyboard arrows work on desktop.</p>
+    </header>
 
-  <main>
-    <section id="gameContainer">
-      <canvas id="gameCanvas" width="700" height="520" aria-label="Game canvas"></canvas>
+    <section class="game">
+      <canvas id="game" width="700" height="480" aria-label="Game canvas"></canvas>
+      <div id="score" role="status" aria-live="polite">Score: 0 / 5</div>
+      <div id="touchControls" class="controls" aria-hidden="true">
+        <button class="btn up" data-dir="up" aria-label="Up">▲</button>
+        <div class="row">
+          <button class="btn left" data-dir="left" aria-label="Left">◀</button>
+          <button class="btn down" data-dir="down" aria-label="Down">▼</button>
+          <button class="btn right" data-dir="right" aria-label="Right">▶</button>
+        </div>
+      </div>
     </section>
-
-    <div id="hud">
-      <div id="score">Score: 0 / 5</div>
-      <div id="message" role="status" aria-live="polite"></div>
-    </div>
-
-    <!-- On-screen controls (mobile) -->
-    <div id="controls" aria-hidden="false">
-      <div class="control-row">
-        <button class="btn" data-dir="up" aria-label="Move up">▲</button>
-      </div>
-      <div class="control-row">
-        <button class="btn" data-dir="left" aria-label="Move left">◀</button>
-        <button class="btn" data-dir="down" aria-label="Move down">▼</button>
-        <button class="btn" data-dir="right" aria-label="Move right">▶</button>
-      </div>
-    </div>
   </main>
 
   <script src="script.js"></script>
