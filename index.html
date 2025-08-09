@@ -1,34 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MrPi Island Quest 🌴</title>
+  <title>MrPi Island Quest</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
     <h1>MrPi Island Quest 🌴</h1>
-    <p class="sub">Swipe/tap to move. Arrow keys on desktop. Enjoy the cutscenes!</p>
+    <p class="subtitle">Swipe/tap in the play area to move MrPi. Keyboard arrows work on desktop.</p>
   </header>
 
-  <main>
-    <canvas id="game" width="640" height="400" aria-label="MrPi Island Quest game canvas"></canvas>
+  <!-- Intro / cutscene -->
+  <div id="intro" class="overlay show">
+    <div class="card">
+      <p id="introText"></p>
+      <button id="introBtn" class="btn">I'm on it!</button>
+    </div>
+  </div>
 
-    <!-- Touch joystick (auto-hidden on desktop) -->
-    <div id="joystick" class="joy">
-      <div class="stick"></div>
+  <main>
+    <div class="canvas-wrap">
+      <canvas id="game" width="720" height="480"></canvas>
+      <div id="score">Score: <span id="scoreVal">0</span> / <span id="scoreMax">0</span></div>
     </div>
 
-    <!-- UI overlay for dialog / prompts -->
-    <div id="dialog" class="dialog hidden"></div>
-    <button id="actionBtn" class="btn hidden">Continue</button>
+    <!-- (Optional) on-screen arrows -->
+    <div id="controls" aria-label="touch controls">
+      <div class="row center">
+        <button class="cbtn" data-dir="up">▲</button>
+      </div>
+      <div class="row">
+        <button class="cbtn" data-dir="left">◀</button>
+        <button class="cbtn" data-dir="down">▼</button>
+        <button class="cbtn" data-dir="right">▶</button>
+      </div>
+    </div>
   </main>
 
-  <footer>
-    <p class="tiny">Demo build — no downloads or tracking.</p>
-  </footer>
-
-  <script type="module" src="game.js"></script>
+  <script src="game.js"></script>
 </body>
 </html>
