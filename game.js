@@ -1,103 +1,37 @@
-import { IntroScene } from './scenes/IntroScene.js';
-import { IslandScene } from './scenes/IslandScene.js';
-import { WinScene } from './scenes/WinScene.js';
-
-/* --------- tiny engine --------- */
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-const W = () => canvas.width;
-const H = () => canvas.height;
-
-const dialog = document.getElementById('dialog');
-const actionBtn = document.getElementById('actionBtn');
-
-/** scene manager **/
-const Scenes = {
-  stack: [],
-  push(scene){ this.stack.push(scene); scene.enter(); },
-  replace(scene){ const old = this.stack.pop(); old && old.exit?.(); this.push(scene); },
-  current(){ return this.stack[this.stack.length-1]; }
-};
-
-let last = performance.now();
-function loop(t){
-  const dt = Math.min(0.033, (t - last) / 1000); last = t;
-  // resize (keeps aspect while allowing CSS scale)
-  const ratio = 640/400; // logical aspect
-  if (canvas.clientWidth && canvas.clientHeight){
-    const wantW = 640;
-    const wantH = Math.round(wantW/ratio);
-    if (canvas.width !== wantW || canvas.height !== wantH){
-      canvas.width = wantW; canvas.height = wantH;
-    }
-  }
-  Scenes.current().update(dt);
-  Scenes.current().draw(ctx, W(), H());
-  requestAnimationFrame(loop);
+:root{
+  --sky:#9ed7f0;
+  --panel:#dff1ff;
+  --ink:#1b2a3a;
+  --accent:#ffe061;
+  --shadow:rgba(0,0,0,.18);
 }
 
-/* --------- input: keys + tap + joystick --------- */
-const keys = new Set();
-window.addEventListener('keydown', e => keys.add(e.key));
-window.addEventListener('keyup', e => keys.delete(e.key));
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--sky);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial}
+header{padding:18px 16px 6px}
+h1{margin:0 0 6px;font-size:clamp(24px,5.5vw,40px)}
+.subtitle{margin:0;color:#2b4458}
 
-const pointer = {active:false,x:0,y:0,dx:0,dy:0};
-function pointerEvt(e, down){
-  const rect = canvas.getBoundingClientRect();
-  const p = 'touches' in e ? e.touches[0] : e;
-  pointer.x = (p.clientX - rect.left) * (canvas.width / rect.width);
-  pointer.y = (p.clientY - rect.top) * (canvas.height / rect.height);
-  pointer.active = down;
+main{padding:10px 12px 24px}
+.canvas-wrap{max-width:900px;margin:0 auto;background:linear-gradient(#eaf6ff,#d9ecff);border-radius:18px;box-shadow:0 10px 30px var(--shadow);padding:10px}
+#game{width:100%;height:auto;display:block;border-radius:12px;border:6px solid #38434b}
+
+#score{margin:10px auto 0;max-width:900px;text-align:center;font-weight:800;font-size:clamp(18px,4.5vw,28px)}
+
+#controls{margin:18px auto 0;max-width:520px;display:grid;gap:10px;user-select:none}
+#controls .row{display:flex;gap:10px;justify-content:space-between}
+#controls .row.center{justify-content:center}
+.cbtn{font-size:28px;padding:18px 26px;background:var(--accent);border:none;border-radius:18px;box-shadow:0 8px 0 #d3b244,0 10px 16px var(--shadow);cursor:pointer}
+.cbtn:active{transform:translateY(2px);box-shadow:0 6px 0 #d3b244,0 8px 12px var(--shadow)}
+
+/* Intro overlay */
+.overlay{position:fixed;inset:0;display:grid;place-items:center;background:rgba(10,34,52,.35);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:.3s}
+.overlay.show{opacity:1;pointer-events:auto}
+.card{width:min(560px,92vw);background:var(--panel);border-radius:18px;padding:18px 18px 14px;box-shadow:0 20px 50px var(--shadow)}
+.card p{min-height:6lh;font-size:clamp(18px,4.6vw,24px);margin:0 0 12px}
+.btn{background:#ffd34d;border:none;border-radius:14px;padding:10px 16px;font-weight:800;font-size:16px;cursor:pointer}
+
+@media (max-width:760px){
+  #controls{gap:12px}
+  .cbtn{font-size:26px}
 }
-canvas.addEventListener('pointerdown', e => pointerEvt(e, true));
-canvas.addEventListener('pointermove', e => pointerEvt(e, pointer.active));
-canvas.addEventListener('pointerup',   e => pointerEvt(e, false));
-canvas.addEventListener('pointerleave',e => pointerEvt(e, false));
-canvas.addEventListener('touchstart', e => { pointerEvt(e, true); e.preventDefault(); }, {passive:false});
-canvas.addEventListener('touchmove',  e => { pointerEvt(e, true); e.preventDefault(); }, {passive:false});
-canvas.addEventListener('touchend',   e => { pointerEvt(e, false); e.preventDefault(); }, {passive:false});
-
-/* touch joystick */
-const joy = document.getElementById('joystick');
-const stick = joy.querySelector('.stick');
-const joyState = {dx:0,dy:0,active:false};
-let joyTouchId = null;
-function joyHandle(e, down){
-  const rect = joy.getBoundingClientRect();
-  const t = (e.touches ? [...e.touches].find(t=> t.identifier===joyTouchId) || e.touches[0] : e);
-  if (!t) return;
-  const x = t.clientX - rect.left - rect.width/2;
-  const y = t.clientY - rect.top - rect.height/2;
-  const len = Math.hypot(x,y);
-  const max = rect.width/2 - 20;
-  const nx = len ? x/len : 0, ny = len ? y/len : 0;
-  const mag = Math.min(1, len/max);
-  joyState.dx = nx*mag; joyState.dy = ny*mag; joyState.active = down;
-  stick.style.transform = `translate(${nx*max}px, ${ny*max}px)`;
-}
-joy.addEventListener('touchstart',e=>{ joyTouchId = e.changedTouches[0].identifier; joyHandle(e,true); },{passive:false});
-joy.addEventListener('touchmove', e=>{ joyHandle(e,true); e.preventDefault(); },{passive:false});
-['touchend','touchcancel'].forEach(evt=>{
-  joy.addEventListener(evt, e=>{ if ([...e.changedTouches].some(t=>t.identifier===joyTouchId)){ joyState.active=false; joyState.dx=joyState.dy=0; stick.style.transform='translate(0,0)'; }});
-});
-
-/* --------- helpers used by scenes --------- */
-export const Engine = {
-  canvas, ctx, keys, pointer, joyState,
-  showDialog(text, buttonLabel='Continue', onClick=null){
-    dialog.textContent = text;
-    dialog.classList.remove('hidden');
-    actionBtn.textContent = buttonLabel;
-    actionBtn.classList.remove('hidden');
-    actionBtn.onclick = () => {
-      dialog.classList.add('hidden'); actionBtn.classList.add('hidden');
-      onClick && onClick();
-    };
-  },
-  hideDialog(){ dialog.classList.add('hidden'); actionBtn.classList.add('hidden'); },
-  changeTo(scene){ Scenes.replace(scene); },
-};
-
-/* --------- boot --------- */
-Scenes.push(new IntroScene(Engine, ()=> new IslandScene(Engine, ()=> new WinScene(Engine))));
-requestAnimationFrame(loop);
