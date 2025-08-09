@@ -1,53 +1,50 @@
-/* General page styling */
 body {
-  background-color: #87ceeb; /* Sky blue */
-  font-family: Arial, sans-serif;
-  text-align: center;
-  margin: 0;
-  padding: 0;
+    font-family: Arial, sans-serif;
+    background: linear-gradient(to bottom, #87cefa, #f0f8ff);
+    text-align: center;
+    margin: 0;
+    padding: 0;
 }
 
-/* Game title */
-h1 {
-  margin: 10px 0;
-  font-size: 1.5em;
-  color: #333;
+#game-container {
+    max-width: 600px;
+    margin: auto;
+    padding: 10px;
 }
 
-/* Game canvas */
-#gameCanvas {
-  background-color: #c2f970; /* Grass green */
-  display: block;
-  margin: 0 auto;
-  border: 3px solid #333;
+.logo {
+    height: 80px;
 }
 
-/* Mobile control buttons */
-.controls {
-  margin-top: 15px;
+canvas {
+    background: url('background.jpg') no-repeat center center;
+    background-size: cover;
+    display: block;
+    margin: 10px auto;
+    border: 2px solid #333;
 }
 
-.controls button {
-  width: 60px;
-  height: 60px;
-  font-size: 1.5em;
-  margin: 5px;
-  border-radius: 10px;
-  border: none;
-  background-color: gold;
-  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
-  cursor: pointer;
+#controls {
+    margin-top: 10px;
 }
 
-.controls button:active {
-  background-color: orange;
-  transform: scale(0.95);
+#controls button {
+    font-size: 20px;
+    padding: 10px;
+    margin: 5px;
+    border: none;
+    background: #333;
+    color: white;
+    border-radius: 5px;
 }
 
-/* Responsive layout */
-@media (max-width: 768px) {
-  #gameCanvas {
-    width: 95vw;
-    height: auto;
-  }
+#score {
+    font-size: 20px;
+    margin-top: 10px;
+}
+
+#message {
+    font-size: 18px;
+    font-weight: bold;
+    color: green;
 }
