@@ -1,32 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <title>MrPi Island Quest</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="wrap">
-    <header>
-      <h1>MrPi Island Quest 🌴</h1>
-      <p class="hint">Swipe or tap inside the game to move MrPi. Keyboard arrows work on desktop.</p>
-    </header>
+    <h1>MrPi Island Quest 🌴</h1>
+    <p class="hint">Swipe or tap in the play area to move MrPi. Keyboard arrows work on desktop.</p>
 
-    <section class="game">
-      <canvas id="game" width="700" height="480" aria-label="Game canvas"></canvas>
-      <div id="score" role="status" aria-live="polite">Score: 0 / 5</div>
-      <div id="touchControls" class="controls" aria-hidden="true">
-        <button class="btn up" data-dir="up" aria-label="Up">▲</button>
-        <div class="row">
-          <button class="btn left" data-dir="left" aria-label="Left">◀</button>
-          <button class="btn down" data-dir="down" aria-label="Down">▼</button>
-          <button class="btn right" data-dir="right" aria-label="Right">▶</button>
-        </div>
+    <div class="canvas-wrap">
+      <canvas id="gameCanvas" aria-label="MrPi Island Quest"></canvas>
+    </div>
+
+    <div id="score" aria-live="polite">Score: 0 / 5</div>
+
+    <!-- Mobile onscreen arrows -->
+    <div id="controls" aria-hidden="true">
+      <button class="btn up"   data-dir="up"    aria-label="Move up">▲</button>
+      <div class="row">
+        <button class="btn left"  data-dir="left"  aria-label="Move left">◀</button>
+        <button class="btn down"  data-dir="down"  aria-label="Move down">▼</button>
+        <button class="btn right" data-dir="right" aria-label="Move right">▶</button>
       </div>
-    </section>
+    </div>
   </main>
 
-  <script src="script.js"></script>
+  <script defer src="script.js"></script>
 </body>
 </html>
