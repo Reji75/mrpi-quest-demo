@@ -1,15 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>MrPi Island Quest 3D</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>MrPi Island Quest</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-    <h1>MrPi Island Quest 3D 🏝️</h1>
-    <p>Use W/A/S/D or arrow keys to move, Space to jump.</p>
-    <canvas id="renderCanvas"></canvas>
-    <script src="game3d.js"></script>
+  <header>
+    <h1>MrPi Island Quest <span>🏝️</span></h1>
+    <p>Swipe / tap in the play area to move MrPi. Arrow keys or WASD work on desktop.</p>
+  </header>
+
+  <main>
+    <div id="frame">
+      <canvas id="game" width="512" height="512"></canvas>
+    </div>
+    <div id="hud">
+      <div>Score: <span id="score">0</span> / <span id="goal">7</span></div>
+      <div id="status">Ready.</div>
+    </div>
+  </main>
+
+  <footer>Demo build — no downloads or tracking.</footer>
+
+  <script src="game.js"></script>
 </body>
 </html>
