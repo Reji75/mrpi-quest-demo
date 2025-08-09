@@ -1,392 +1,343 @@
-/* MrPi Island Quest — Isometric Mini-Adventure (no libraries)
-   - isometric grid & camera
-   - coins to collect (uses mrpi_token_transparent.png)
-   - patrolling crab enemies (drawn as simple shapes)
-   - swipe/drag + keyboard controls
-   - timer, lives, toasts
-*/
-
 (() => {
-  const canvas = document.getElementById('game');
+  const canvas = document.getElementById('play');
   const ctx = canvas.getContext('2d');
 
-  const ui = {
-    score: document.getElementById('score'),
-    lives: document.getElementById('lives'),
-    time:  document.getElementById('time'),
-    status:document.getElementById('status'),
-    toast: document.getElementById('toast')
+  // --- HUD elements
+  const elScore = document.getElementById('score');
+  const elLives = document.getElementById('lives');
+  const elTime  = document.getElementById('time');
+  const elStatus = document.getElementById('status');
+
+  // --- Game state
+  const state = {
+    w: canvas.width,
+    h: canvas.height,
+    running: true,
+    score: 0,
+    lives: 3,
+    time: 60,
+    dt: 0,
+    last: 0,
   };
 
-  // --- assets (use your existing repo files) --------------------
-  const imgPlayer = new Image();
-  imgPlayer.src = 'mrpi_logo_transparent.png'; // smaller on draw
+  // --- World layout (fake isometric diamond)
+  const world = {
+    cx: canvas.width / 2,
+    cy: canvas.height / 2 + 20,
+    ringR: [260, 200, 135, 80], // water, grass, sand, inner
+  };
 
-  const imgCoin = new Image();
-  imgCoin.src = 'mrpi_token_transparent.png';
-
-  // --- world config ---------------------------------------------
-  const TILE_W = 64;         // tile width (cartesian)
-  const TILE_H = 32;         // tile height (cartesian)
-  const MAP_W = 26;          // tiles
-  const MAP_H = 26;
-  const CAMERA = { x: 0, y: 0, lerp: 0.12 };
-
-  // ring radii to paint water/sand/grass
-  const R1 = 5, R2 = 9, R3 = 12; // inner sand, grass, shallow-water
-
-  // gameplay
-  let coins = [];
-  let enemies = [];
-  let score = 0;
-  let lives = 3;
-  let timeLeft = 60;
-  let gameOver = false;
-  let statusMsg = 'Ready.';
-  let lastShake = 0;
-
-  ui.lives.textContent = lives;
-  ui.time.textContent = timeLeft;
-
-  // --- helpers ---------------------------------------------------
-  const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
-
-  function cartToIso(cx, cy){
-    // convert cartesian tile coords to screen (top-left of tile)
-    const sx = (cx - cy) * (TILE_W/2);
-    const sy = (cx + cy) * (TILE_H/2);
-    return {x:sx, y:sy};
-  }
-
-  function worldToScreen(wx, wy){
-    // wx/wy = world tile coords (float)
-    const iso = cartToIso(wx, wy);
-    return { x: iso.x - CAMERA.x + canvas.width/2,
-             y: iso.y - CAMERA.y + canvas.height/2 };
-  }
-
-  function showToast(text, good=true){
-    ui.toast.textContent = text;
-    ui.toast.style.background = good ? 'rgba(255,255,255,.92)' : 'rgba(255,230,230,.95)';
-    ui.toast.classList.add('show');
-    setTimeout(()=>ui.toast.classList.remove('show'), 900);
-  }
-
-  // --- generate island tiles (procedural rings) -----------------
-  // 0 water, 1 shallow, 2 grass, 3 sand (center)
-  const tiles = new Uint8Array(MAP_W * MAP_H);
-  const cx = MAP_W/2, cy = MAP_H/2;
-
-  for(let y=0;y<MAP_H;y++){
-    for(let x=0;x<MAP_W;x++){
-      const dx = x - cx, dy = y - cy;
-      const d = Math.sqrt(dx*dx + dy*dy);
-
-      let t = 0; // deep water
-      if (d < R3) t = 1;     // shallow water
-      if (d < R2) t = 2;     // grass ring
-      if (d < R1) t = 3;     // beach center
-      tiles[y*MAP_W + x] = t;
-    }
-  }
-
-  // --- player ----------------------------------------------------
+  // --- Entities
   const player = {
-    x: cx, y: cy,  // tile coords (float)
-    spd: 3.2 / TILE_W, // tile units per frame based on width
-    vx:0, vy:0,
-    r: 0.35,      // collision radius in tiles
+    x: world.cx,
+    y: world.cy - 10,
+    r: 14,
+    speed: 220, // px/s
+    vx: 0, vy: 0
   };
 
-  // --- place coins on grass ring---------------------------------
-  function scatterCoins(n=12){
-    coins = [];
-    let tries = 0;
-    while(coins.length < n && tries < 500){
-      tries++;
-      const x = 4 + Math.random()*(MAP_W-8);
-      const y = 4 + Math.random()*(MAP_H-8);
-      const t = tiles[Math.floor(y)*MAP_W + Math.floor(x)];
-      if(t === 2){ // grass only
-        coins.push({x,y, r:0.28, picked:false, bob:(Math.random()*Math.PI*2)});
-      }
-    }
-  }
+  /** Coins (gold dots) and hazards (red crabs) */
+  const coins = [];
+  const hazards = [];
 
-  // --- enemies (crabs) ------------------------------------------
-  function spawnCrabs(n=3){
-    enemies = [];
-    for(let i=0;i<n;i++){
-      const ang = Math.random()*Math.PI*2;
-      const radius = 6 + Math.random()*3;
-      enemies.push({
-        x: cx + Math.cos(ang)*radius,
-        y: cy + Math.sin(ang)*radius,
-        r: .35,
-        t: Math.random()*Math.PI*2,   // phase
-        speed: 0.009 + Math.random()*0.006
+  // --- Helpers ---------------------------------------------------------------
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rand = (a, b) => a + Math.random() * (b - a);
+
+  function resetRound() {
+    coins.length = 0;
+    hazards.length = 0;
+
+    // Scatter 7 coins in the grass ring
+    for (let i = 0; i < 7; i++) {
+      const ang = rand(0, Math.PI * 2);
+      const r = rand(world.ringR[2] + 8, world.ringR[1] - 10);
+      coins.push({ x: world.cx + Math.cos(ang) * r, y: world.cy + Math.sin(ang) * r, r: 10, taken: false });
+    }
+
+    // A couple of "crabs" circling the outer grass
+    for (let i = 0; i < 2; i++) {
+      hazards.push({
+        t: rand(0, Math.PI * 2),
+        speed: (Math.random() < .5 ? -1 : 1) * rand(0.7, 1.1),
+        r: world.ringR[1] - 8
       });
     }
   }
 
-  function drawCrab(e){
-    const p = worldToScreen(e.x, e.y);
-    // body
+  // --- Input (keys + swipe / drag) ------------------------------------------
+  const keys = new Set();
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if ('wasd'.includes(k) || ['arrowup','arrowdown','arrowleft','arrowright'].includes(k)) {
+      keys.add(k); e.preventDefault();
+    }
+  });
+  window.addEventListener('keyup',   e => keys.delete(e.key.toLowerCase()));
+
+  // Touch / pointer: drag to set a direction vector
+  let pointer = null;
+  function setPointer(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    pointer = {
+      x: (clientX - rect.left) * (canvas.width / rect.width),
+      y: (clientY - rect.top)  * (canvas.height / rect.height)
+    };
+  }
+  canvas.addEventListener('pointerdown', e => { setPointer(e.clientX, e.clientY); });
+  canvas.addEventListener('pointermove', e => { if (pointer) setPointer(e.clientX, e.clientY); });
+  window.addEventListener('pointerup',   () => { pointer = null; });
+
+  // --- Update & Render -------------------------------------------------------
+  function update(dt) {
+    // Keys -> velocity
+    let vx = 0, vy = 0;
+    if (keys.has('arrowleft') || keys.has('a'))  vx -= 1;
+    if (keys.has('arrowright')|| keys.has('d'))  vx += 1;
+    if (keys.has('arrowup')   || keys.has('w'))  vy -= 1;
+    if (keys.has('arrowdown') || keys.has('s'))  vy += 1;
+
+    // Pointer drag -> move toward pointer
+    if (pointer) {
+      const dx = pointer.x - player.x;
+      const dy = pointer.y - player.y;
+      const len = Math.hypot(dx, dy) || 1;
+      vx = dx / len; vy = dy / len;
+    }
+
+    // Normalize & apply speed
+    if (vx || vy) {
+      const len = Math.hypot(vx, vy);
+      vx /= len; vy /= len;
+      player.x += vx * player.speed * dt;
+      player.y += vy * player.speed * dt;
+    }
+
+    // Keep the player inside the grass ring
+    const dx = player.x - world.cx;
+    const dy = player.y - world.cy;
+    const dist = Math.hypot(dx, dy);
+    const maxR = world.ringR[1] - 10;
+    if (dist > maxR) {
+      const k = maxR / dist;
+      player.x = world.cx + dx * k;
+      player.y = world.cy + dy * k;
+    }
+
+    // Coins: collect
+    for (const c of coins) {
+      if (!c.taken && Math.hypot(player.x - c.x, player.y - c.y) < player.r + c.r) {
+        c.taken = true;
+        state.score += 1;
+        elScore.textContent = state.score;
+        setStatus(`Nice! +1 MrPi token`);
+      }
+    }
+
+    // Hazards: move and collide
+    for (const h of hazards) {
+      h.t += dt * h.speed;
+      const x = world.cx + Math.cos(h.t) * h.r;
+      const y = world.cy + Math.sin(h.t) * h.r;
+      if (Math.hypot(player.x - x, player.y - y) < player.r + 10) {
+        // hit
+        state.lives = Math.max(0, state.lives - 1);
+        elLives.textContent = state.lives;
+        setStatus('Ouch! Crab pinch 🦀', true);
+        // knock back a bit
+        const ndx = (player.x - x) || 1;
+        const ndy = (player.y - y);
+        const nlen = Math.hypot(ndx, ndy) || 1;
+        player.x += (ndx / nlen) * 20;
+        player.y += (ndy / nlen) * 20;
+      }
+    }
+  }
+
+  function drawIsland() {
+    // Sky gradient background (inside canvas)
+    const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    sky.addColorStop(0, '#bfe6ff');
+    sky.addColorStop(1, '#dff3ff');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0,0,canvas.width, canvas.height);
+
+    // Isometric diamond frame
     ctx.save();
-    ctx.translate(p.x, p.y - 6);
-    ctx.scale(1, .9);
-    ctx.fillStyle = '#e11d48'; // red
-    ctx.beginPath(); ctx.arc(0,0,14,0,Math.PI*2); ctx.fill();
-    // eyes
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-6,-5,4,0,7); ctx.arc(6,-5,4,0,7); ctx.fill();
-    ctx.fillStyle = '#1f2937'; ctx.beginPath(); ctx.arc(-6,-5,2,0,7); ctx.arc(6,-5,2,0,7); ctx.fill();
-    // claws
-    ctx.fillStyle = '#ef3b65';
-    ctx.beginPath(); ctx.arc(-18,0,6,0,7); ctx.arc(18,0,6,0,7); ctx.fill();
+    ctx.translate(world.cx, world.cy);
+    ctx.rotate(Math.PI/4);
+
+    // water -> grass -> sand
+    const layers = [
+      { r: world.ringR[0], col: '#bfe0ff' },
+      { r: world.ringR[1], col: '#3ea35a' },
+      { r: world.ringR[2], col: '#f1d08a' },
+    ];
+    for (const L of layers) {
+      ctx.fillStyle = L.col;
+      ctx.beginPath();
+      ctx.moveTo(0, -L.r);
+      ctx.lineTo(L.r, 0);
+      ctx.lineTo(0, L.r);
+      ctx.lineTo(-L.r, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
-    // shadow
-    ctx.fillStyle='rgba(0,0,0,.18)';
-    ctx.beginPath(); ctx.ellipse(p.x, p.y+10, 18, 6, 0, 0, 7); ctx.fill();
+
+    // A simple tree (top-down-ish)
+    const tree = { x: world.cx + 80, y: world.cy - 10 };
+    ctx.fillStyle = '#5c3b1e';
+    ctx.fillRect(tree.x - 4, tree.y + 12, 8, 28);
+    ctx.beginPath();
+    ctx.fillStyle = '#2f8848';
+    ctx.arc(tree.x, tree.y, 34, 0, Math.PI*2);
+    ctx.fill();
   }
 
-  // --- controls --------------------------------------------------
-  const keys = {};
-  window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-  window.addEventListener('keyup',   e => keys[e.key.toLowerCase()] = false);
+  function drawCoins() {
+    for (const c of coins) {
+      if (c.taken) continue;
+      const g = ctx.createRadialGradient(c.x-3,c.y-3,2, c.x,c.y,c.r+3);
+      g.addColorStop(0, '#fff9b7');
+      g.addColorStop(0.4, '#ffd95e');
+      g.addColorStop(1, '#ffad14');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, Math.PI*2);
+      ctx.fill();
 
-  // swipe / drag
-  let touchActive=false, touchStart=null;
-  canvas.addEventListener('pointerdown', e=>{
-    touchActive = true;
-    touchStart = {x:e.clientX, y:e.clientY};
-  });
-  window.addEventListener('pointerup', ()=>touchActive=false);
-  window.addEventListener('pointermove', e=>{
-    if(!touchActive || !touchStart) return;
-    const dx = e.clientX - touchStart.x;
-    const dy = e.clientY - touchStart.y;
-    const dead=6;
-    player.vx = Math.abs(dx)>dead ? Math.sign(dx) : 0;
-    player.vy = Math.abs(dy)>dead ? Math.sign(dy) : 0;
-  });
+      // rim
+      ctx.strokeStyle = '#d98100';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r-1.5, 0, Math.PI*2);
+      ctx.stroke();
 
-  // --- game flow -------------------------------------------------
-  function reset(){
-    score = 0; lives = 3; timeLeft = 60; gameOver = false;
-    ui.score.textContent = score;
-    ui.lives.textContent = lives;
-    ui.time.textContent = timeLeft;
-    statusMsg = 'Ready.';
-    player.x = cx; player.y = cy;
-    scatterCoins(10);
-    spawnCrabs(4);
+      // tiny "MrPi" mark
+      ctx.fillStyle = '#7a4a00';
+      ctx.font = 'bold 10px system-ui,Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('MrPi', c.x, c.y);
+    }
   }
 
-  reset();
+  function drawHazards() {
+    ctx.fillStyle = '#e84747';
+    ctx.strokeStyle = '#b51f1f';
+    for (const h of hazards) {
+      const x = world.cx + Math.cos(h.t) * h.r;
+      const y = world.cy + Math.sin(h.t) * h.r;
 
-  // timer
-  setInterval(()=>{
-    if (gameOver) return;
-    timeLeft = Math.max(0, timeLeft-1);
-    ui.time.textContent = timeLeft;
-    if(timeLeft === 0){
-      statusMsg = 'Time up!';
-      gameOver = true;
-      showToast('⏳ Time up!', false);
+      // body
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, Math.PI*2);
+      ctx.fill();
+      ctx.stroke();
+
+      // eyes
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(x-3, y-2, 2, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x+3, y-2, 2, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#222';
+      ctx.beginPath(); ctx.arc(x-3, y-2, 1, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x+3, y-2, 1, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#e84747';
     }
-  }, 1000);
+  }
 
-  // --- update ----------------------------------------------------
-  function update(dt){
-    if (gameOver) return;
+  function drawPlayer() {
+    // Panda-like circle + hat (super simple)
+    // body shadow
+    ctx.fillStyle = 'rgba(0,0,0,.12)';
+    ctx.beginPath(); ctx.ellipse(player.x+2, player.y+12, 14, 6, 0, 0, Math.PI*2); ctx.fill();
 
-    // keyboard -> cartesian movement (WASD/Arrows)
-    let mvx = 0, mvy = 0;
-    if(keys['arrowleft']||keys['a'])  mvx -= 1;
-    if(keys['arrowright']||keys['d']) mvx += 1;
-    if(keys['arrowup']||keys['w'])    mvy -= 1;
-    if(keys['arrowdown']||keys['s'])  mvy += 1;
+    // head
+    ctx.beginPath(); ctx.fillStyle = '#fff';
+    ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.fill();
 
-    // merge with drag
-    mvx = mvx || player.vx;
-    mvy = mvy || player.vy;
+    // ears
+    ctx.fillStyle = '#20262b';
+    ctx.beginPath(); ctx.arc(player.x-9, player.y-9, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(player.x+9, player.y-9, 5, 0, Math.PI*2); ctx.fill();
 
-    // convert screen intent to isometric axes (approx.)
-    // moving right means increasing x and decreasing y in iso space
-    let ix = (mvx - mvy) * player.spd * (dt*60);
-    let iy = (mvx + mvy) * player.spd * (dt*60);
+    // eyes
+    ctx.fillStyle = '#20262b';
+    ctx.beginPath(); ctx.arc(player.x-5, player.y-2, 3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(player.x+5, player.y-2, 3, 0, Math.PI*2); ctx.fill();
 
-    // attempt move; keep inside map and avoid deep water
-    const nx = clamp(player.x + ix, 1, MAP_W-2);
-    const ny = clamp(player.y + iy, 1, MAP_H-2);
-    const tileIdx = tiles[Math.floor(ny)*MAP_W + Math.floor(nx)];
-    if(tileIdx !== 0){ // not deep water
-      player.x = nx; player.y = ny;
+    // hat
+    ctx.fillStyle = '#2a2f36';
+    ctx.fillRect(player.x-12, player.y-18, 24, 5);
+    ctx.beginPath(); ctx.ellipse(player.x, player.y-20, 12, 6, 0, 0, Math.PI*2); ctx.fill();
+  }
+
+  function render() {
+    drawIsland();
+    drawCoins();
+    drawHazards();
+    drawPlayer();
+  }
+
+  // --- Status text -----------------------------------------------------------
+  let statusTimer = 0;
+  function setStatus(text, warn=false) {
+    elStatus.textContent = text;
+    elStatus.classList.toggle('warn', !!warn);
+    statusTimer = 1.6; // seconds
+  }
+
+  // --- Timer -----------------------------------------------------------------
+  let timeTick = 0;
+  function tickTimer(dt) {
+    timeTick += dt;
+    if (timeTick >= 1) {
+      timeTick = 0;
+      state.time = Math.max(0, state.time - 1);
+      elTime.textContent = state.time;
+      if (state.time === 0) {
+        state.running = false;
+        setStatus('Time! Final score: '+state.score, true);
+      }
     }
+  }
 
-    // camera follow (lerp)
-    const target = cartToIso(player.x, player.y);
-    CAMERA.x += (target.x - CAMERA.x) * CAMERA.lerp;
-    CAMERA.y += (target.y - CAMERA.y) * CAMERA.lerp;
+  // --- Game loop -------------------------------------------------------------
+  function loop(t) {
+    if (!state.last) state.last = t;
+    state.dt = Math.min(0.033, (t - state.last) / 1000);
+    state.last = t;
 
-    // coins
-    for(const c of coins){
-      if(c.picked) continue;
-      const dx = c.x - player.x, dy = c.y - player.y;
-      if(dx*dx + dy*dy < (player.r + c.r)**2){
-        c.picked = true; score++;
-        ui.score.textContent = score;
-        statusMsg = 'Nice! +1 MrPi token';
-        showToast('🟡 +1 MrPi token');
-      }else{
-        c.bob += dt*4;
+    if (state.running) {
+      update(state.dt);
+      tickTimer(state.dt);
+      if (statusTimer > 0) {
+        statusTimer -= state.dt;
+        if (statusTimer <= 0) { elStatus.textContent = 'Ready.'; elStatus.classList.remove('warn'); }
       }
     }
 
-    // enemies
-    enemies.forEach(e=>{
-      e.t += e.speed * (dt*60);
-      // orbit center-ish
-      const radius = 6.5;
-      e.x = cx + Math.cos(e.t)*(radius + Math.sin(e.t*2)*.6);
-      e.y = cy + Math.sin(e.t)*(radius + Math.cos(e.t*2)*.4);
-
-      // collision with player
-      const dx=e.x-player.x, dy=e.y-player.y;
-      if(dx*dx + dy*dy < (e.r+player.r)**2 && Date.now()-lastShake>700){
-        lives = Math.max(0,lives-1);
-        ui.lives.textContent = lives;
-        statusMsg = 'Ouch! Crab pinch!';
-        showToast('🦀 Ouch! -1 life', false);
-        lastShake = Date.now();
-        if(lives===0){ gameOver=true; statusMsg='Game over'; }
-      }
-    });
-
-    // win
-    if(!gameOver && coins.every(c=>c.picked)){
-      statusMsg = 'All tokens collected!';
-      showToast('🎉 All tokens!');
-      gameOver = true;
-    }
-
-    // clear drag intent when not touching
-    if(!touchActive){ player.vx = player.vy = 0; }
-  }
-
-  // --- draw ------------------------------------------------------
-  function draw(){
-    // sky
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    // draw iso tiles back->front by cartesian y then x
-    for(let y=0;y<MAP_H;y++){
-      for(let x=0;x<MAP_W;x++){
-        const t = tiles[y*MAP_W+x];
-        const s = worldToScreen(x, y);
-        const cx = s.x, cy = s.y;
-
-        // tile diamond
-        const w = TILE_W, h = TILE_H;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy + h/2);
-        ctx.lineTo(cx + w/2, cy);
-        ctx.lineTo(cx + w, cy + h/2);
-        ctx.lineTo(cx + w/2, cy + h);
-        ctx.closePath();
-
-        if(t===0) ctx.fillStyle = '#6fb1d6';           // deep water
-        if(t===1) ctx.fillStyle = '#9dd6f0';           // shallow
-        if(t===2) ctx.fillStyle = '#3fa763';           // grass
-        if(t===3) ctx.fillStyle = '#f2d39b';           // sand
-        ctx.fill();
-
-        // subtle highlight edge on upper facet
-        if(t>=2){
-          ctx.strokeStyle='rgba(255,255,255,.12)';
-          ctx.lineWidth=1;
-          ctx.beginPath();
-          ctx.moveTo(cx + w/2, cy);
-          ctx.lineTo(cx + w, cy + h/2);
-          ctx.stroke();
-        }
-
-        // simple tree on a specific grass spot
-        if(t===2 && x===Math.floor(MAP_W*0.62) && y===Math.floor(MAP_H*0.58)){
-          // trunk shadow
-          ctx.fillStyle='rgba(0,0,0,.22)';
-          ctx.beginPath(); ctx.ellipse(cx+w/2, cy+h*.64, 14, 6, 0, 0, 7); ctx.fill();
-          // trunk
-          ctx.fillStyle='#7b4b27';
-          ctx.fillRect(cx+w/2-3, cy+h*.42, 6, 18);
-          // crown
-          ctx.fillStyle='#2e8b57';
-          ctx.beginPath();
-          ctx.ellipse(cx+w/2, cy+h*.28, 34, 22, 0, 0, 7);
-          ctx.fill();
-        }
-      }
-    }
-
-    // sort drawables by iso screen y for fake depth
-    const drawables = [];
-
-    // coins
-    for(const c of coins){
-      if(c.picked) continue;
-      const p = worldToScreen(c.x, c.y);
-      drawables.push({
-        y: p.y,
-        fn: () => {
-          // shadow
-          ctx.fillStyle = 'rgba(0,0,0,.18)';
-          ctx.beginPath(); ctx.ellipse(p.x + TILE_W/2, p.y + TILE_H*.8, 12, 6, 0, 0, 7); ctx.fill();
-          // coin
-          const bob = Math.sin(c.bob)*2;
-          const size = 26;
-          ctx.drawImage(imgCoin,
-            p.x + TILE_W/2 - size/2,
-            p.y + TILE_H*.45 - size/2 - bob,
-            size, size);
-        }
-      });
-    }
-
-    // enemies
-    enemies.forEach(e=>{
-      const p = worldToScreen(e.x, e.y);
-      drawables.push({ y:p.y, fn:()=>drawCrab(e) });
-    });
-
-    // player
-    const pp = worldToScreen(player.x, player.y);
-    drawables.push({
-      y: pp.y,
-      fn: () => {
-        // shadow
-        ctx.fillStyle='rgba(0,0,0,.22)';
-        ctx.beginPath(); ctx.ellipse(pp.x + TILE_W/2, pp.y + TILE_H*.85, 16, 8, 0, 0, 7); ctx.fill();
-        // MrPi sprite (scaled down)
-        const pw = 38, ph = 38;
-        ctx.drawImage(imgPlayer, pp.x + TILE_W/2 - pw/2, pp.y + TILE_H*.55 - ph, pw, ph);
-      }
-    });
-
-    // draw in order
-    drawables.sort((a,b)=>a.y-b.y).forEach(d=>d.fn());
-
-    // HUD status
-    ui.status.textContent = statusMsg;
-  }
-
-  // --- loop ------------------------------------------------------
-  let last = performance.now();
-  function loop(now){
-    const dt = Math.min(0.033, (now-last)/1000); // clamp
-    last = now;
-    update(dt);
-    draw();
+    render();
     requestAnimationFrame(loop);
   }
-  requestAnimationFrame(loop);
+
+  // --- Init ------------------------------------------------------------------
+  function resizeCanvas() {
+    // Square canvas that fits the panel
+    const rect = canvas.getBoundingClientRect();
+    const cssSize = Math.min(rect.width, rect.height);
+    // keep internal resolution fixed (already 640x640) for crisp drawing
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  function start() {
+    elScore.textContent = state.score;
+    elLives.textContent = state.lives;
+    elTime.textContent  = state.time;
+    resetRound();
+    requestAnimationFrame(loop);
+  }
+
+  start();
 })();
