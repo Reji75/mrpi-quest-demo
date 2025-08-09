@@ -3,27 +3,30 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MrPi Island Quest — Isometric Prototype</title>
+  <title>MrPi Island Quest 🌴 — Isometric Demo</title>
   <link rel="stylesheet" href="styles.css" />
-  <!-- Phaser 3 CDN -->
-  <script src="https://unpkg.com/phaser@3.80.0/dist/phaser.min.js"></script>
 </head>
 <body>
   <header>
-    <h1>MrPi Island Quest 🌴</h1>
-    <p class="sub">Swipe / tap to move. Arrow keys or WASD on desktop.</p>
+    <h1>MrPi Island Quest <span class="island">🏝️</span></h1>
+    <p>Swipe / tap inside the play area to move. Arrow keys or WASD on desktop.</p>
   </header>
 
   <main>
-    <div id="game"></div>
-    <div id="hud">
+    <div id="frame">
+      <canvas id="game" width="960" height="640"></canvas>
+      <div id="toast" aria-live="polite"></div>
+    </div>
+
+    <section id="hud">
       <div>Score: <span id="score">0</span></div>
       <div>Lives: <span id="lives">3</span></div>
+      <div>Time: <span id="time">60</span>s</div>
       <div>Status: <span id="status">Ready.</span></div>
-    </div>
-  </main>
+    </section>
 
-  <footer>Isometric demo build — no tracking, no downloads.</footer>
+    <p class="note">Isometric demo build — no tracking, no downloads.</p>
+  </main>
 
   <script src="game.js"></script>
 </body>
