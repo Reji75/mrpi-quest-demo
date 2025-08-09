@@ -1,201 +1,234 @@
-// ====== config ======
-const CANVAS = document.getElementById("gameCanvas");
+// === CONFIG ===
+const CANVAS = document.getElementById("game");
 const CTX = CANVAS.getContext("2d");
-const SCORE_EL = document.getElementById("score");
-const MSG_EL = document.getElementById("message");
 
-const TARGET_TOKENS = 5;
-const SPEED = 3; // base speed (scaled by DPR)
-const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1)); // cap a bit
-
-// sprite sizes (logical px before DPR scaling)
-const PLAYER_SIZE = 48;
-const TOKEN_SIZE = 40;
-
-// images (use your uploaded filenames)
 const PLAYER_SRC = "mrpi_logo_transparent.png";
 const TOKEN_SRC  = "mrpi_token_transparent.png";
+const BG_SRC     = "island_bg.jpg";      // <-- upload this file
 
-// ====== state ======
-let player = { x: 80, y: 80, size: PLAYER_SIZE };
+const TARGET_TOKENS = 5;                 // how many to collect
+const SPEED_BASE = 3.6;                  // movement base speed (scaled with canvas)
+const PLAYER_SCALE = 0.13;               // relative to canvas height
+const TOKEN_SCALE  = 0.12;               // relative to canvas height
+
+// === STATE ===
+let w = CANVAS.width, h = CANVAS.height;
+let player = { x: 100, y: 100, size: 48, vx: 0, vy: 0 };
 let tokens = [];
-let collected = 0;
+let score = 0;
 
-const keys = { ArrowUp:false, ArrowDown:false, ArrowLeft:false, ArrowRight:false };
-let swipeDir = null;
+let playerImg, tokenImg, bgImg;
+let lastTs = 0;
 
-// ====== helpers ======
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src + "?v=" + Date.now(); // bust stale cache during dev
+// swipe/tap
+let touchDir = null;
+
+// === UTILS ===
+function loadImage(src){
+  return new Promise((res, rej)=>{
+    const im = new Image();
+    im.onload = ()=>res(im);
+    im.onerror = rej;
+    im.src = src + "?v=" + Date.now(); // bust cache while iterating
   });
 }
 
-// Spawn tokens randomly inside the canvas bounds
-function spawnTokens(n, tokenImg) {
-  tokens = [];
-  const padding = 10;
-  for (let i = 0; i < n; i++) {
-    const x = Math.random() * (CANVAS.width  - TOKEN_SIZE*DPR - padding*2) + padding;
-    const y = Math.random() * (CANVAS.height - TOKEN_SIZE*DPR - padding*2) + padding;
-    tokens.push({ x, y, size: TOKEN_SIZE, img: tokenImg });
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+function rand(min, max){ return Math.random() * (max - min) + min; }
+
+function spawnTokens(n){
+  tokens.length = 0;
+  const pad = Math.max(player.size, tokenSize());
+  for(let i=0;i<n;i++){
+    tokens.push({
+      x: rand(pad, w - pad),
+      y: rand(pad, h - pad),
+      size: tokenSize(),
+      collected: false
+    });
   }
 }
 
-function rectsOverlap(a, b, aSize, bSize) {
-  return !(
-    a.x + aSize < b.x ||
-    a.x > b.x + bSize ||
-    a.y + aSize < b.y ||
-    a.y > b.y + bSize
-  );
+function tokenSize(){ return Math.round(h * TOKEN_SCALE); }
+function playerSize(){ return Math.round(h * PLAYER_SCALE); }
+
+function resetPlayer(){
+  player.size = playerSize();
+  player.x = w * 0.15;
+  player.y = h * 0.2;
+  player.vx = player.vy = 0;
 }
 
-// ====== input: keyboard ======
-window.addEventListener("keydown", e => {
-  if (e.key in keys) { keys[e.key] = true; }
-});
-window.addEventListener("keyup", e => {
-  if (e.key in keys) { keys[e.key] = false; }
-});
+function setCanvasSize(){
+  // Keep a nice 7:4 aspect on wide screens, shrink on mobile width
+  const cssWidth = Math.min(760, document.querySelector(".wrap").clientWidth - 8);
+  const cssHeight = Math.round(cssWidth * (4/7));
+  CANVAS.style.width = cssWidth + "px";
+  CANVAS.style.height = cssHeight + "px";
+  // Internal pixel size = CSS * devicePixelRatio for crisp rendering
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  CANVAS.width = Math.round(cssWidth * dpr);
+  CANVAS.height = Math.round(cssHeight * dpr);
+  w = CANVAS.width; h = CANVAS.height;
 
-// ====== input: buttons ======
-document.querySelectorAll(".btn").forEach(btn => {
+  // scale stroke based on DPR
+  CTX.setTransform(dpr,0,0,dpr,0,0);
+
+  // rescale entities
+  resetPlayer();
+  tokens.forEach(t => t.size = tokenSize());
+}
+
+// === INPUT ===
+function keyDown(e){
+  switch(e.key){
+    case "ArrowUp":    player.vy = -1; break;
+    case "ArrowDown":  player.vy =  1; break;
+    case "ArrowLeft":  player.vx = -1; break;
+    case "ArrowRight": player.vx =  1; break;
+  }
+}
+function keyUp(e){
+  switch(e.key){
+    case "ArrowUp":
+    case "ArrowDown":  player.vy = 0; break;
+    case "ArrowLeft":
+    case "ArrowRight": player.vx = 0; break;
+  }
+}
+
+// touch buttons
+document.querySelectorAll("#touchControls .btn").forEach(btn=>{
   const dir = btn.dataset.dir;
-  const keyMap = { up:"ArrowUp", down:"ArrowDown", left:"ArrowLeft", right:"ArrowRight" };
-  const key = keyMap[dir];
-
-  // Pointer events (works for mouse and touch)
-  btn.addEventListener("pointerdown", () => { keys[key] = true; });
-  btn.addEventListener("pointerup",   () => { keys[key] = false; });
-  btn.addEventListener("pointercancel", () => { keys[key] = false; });
+  const set = (on)=>{
+    if(!on){ player.vx = player.vy = 0; return; }
+    if(dir==="up")    { player.vx=0; player.vy=-1; }
+    if(dir==="down")  { player.vx=0; player.vy= 1; }
+    if(dir==="left")  { player.vx=-1; player.vy=0; }
+    if(dir==="right") { player.vx= 1; player.vy=0; }
+  };
+  btn.addEventListener("touchstart", e=>{ e.preventDefault(); set(true); }, {passive:false});
+  btn.addEventListener("touchend",   e=>{ e.preventDefault(); set(false); }, {passive:false});
+  btn.addEventListener("mousedown",  ()=>set(true));
+  btn.addEventListener("mouseup",    ()=>set(false));
+  btn.addEventListener("mouseleave", ()=>set(false));
 });
 
-// ====== input: swipe/tap on canvas ======
-let pointerStart = null;
-CANVAS.addEventListener("pointerdown", (e) => {
-  pointerStart = { x: e.clientX, y: e.clientY, t: Date.now() };
-});
-CANVAS.addEventListener("pointerup", (e) => {
-  if (!pointerStart) return;
-  const dx = e.clientX - pointerStart.x;
-  const dy = e.clientY - pointerStart.y;
-  const dt = Date.now() - pointerStart.t;
-  pointerStart = null;
-
-  // Tap = small movement or short time -> move toward tap point a bit
-  const dist = Math.hypot(dx, dy);
-  if (dist < 8 || dt < 160) {
-    // nudge towards the tap point
-    const angle = Math.atan2(dy, dx);
-    player.x += Math.cos(angle) * 24 * DPR;
-    player.y += Math.sin(angle) * 24 * DPR;
-    return;
-  }
-
-  // Swipe: pick main axis
-  if (Math.abs(dx) > Math.abs(dy)) {
-    swipeDir = dx > 0 ? "right" : "left";
+// swipe/tap on canvas
+let touchStart=null;
+CANVAS.addEventListener("touchstart", e=>{
+  const t=e.changedTouches[0];
+  touchStart={x:t.clientX,y:t.clientY};
+},{passive:true});
+CANVAS.addEventListener("touchend", e=>{
+  if(!touchStart) return;
+  const t=e.changedTouches[0];
+  const dx=t.clientX-touchStart.x;
+  const dy=t.clientY-touchStart.y;
+  const dead=12;
+  player.vx = player.vy = 0;
+  if(Math.abs(dx)<dead && Math.abs(dy)<dead){
+    // tap = move toward tap position a bit (nudge)
+    const rect = CANVAS.getBoundingClientRect();
+    const tx = (t.clientX-rect.left)/rect.width * w;
+    const ty = (t.clientY-rect.top)/rect.height * h;
+    const angle = Math.atan2(ty-player.y, tx-player.x);
+    player.vx = Math.cos(angle);
+    player.vy = Math.sin(angle);
   } else {
-    swipeDir = dy > 0 ? "down" : "up";
+    if(Math.abs(dx)>Math.abs(dy)){
+      player.vx = dx>0 ? 1 : -1;
+    } else {
+      player.vy = dy>0 ? 1 : -1;
+    }
   }
-  // briefly apply swipe as a “button press”
-  const keyFromSwipe = { up:"ArrowUp", down:"ArrowDown", left:"ArrowLeft", right:"ArrowRight" }[swipeDir];
-  keys[keyFromSwipe] = true;
-  setTimeout(() => { keys[keyFromSwipe] = false; swipeDir = null; }, 120);
-});
+  setTimeout(()=>{ player.vx=player.vy=0; }, 160); // short burst
+},{passive:true});
 
-// ====== main loop ======
-let playerImg, tokenImg;
+// === GAME LOOP ===
+function update(dt){
+  const speed = SPEED_BASE * (h/480); // scale speed with canvas height
+  player.x += (player.vx * speed * dt);
+  player.y += (player.vy * speed * dt);
+  const half = player.size/2;
+  player.x = clamp(player.x, half, w-half);
+  player.y = clamp(player.y, half, h-half);
 
-function clamp(val, min, max){ return Math.max(min, Math.min(max, val)); }
-
-function update() {
-  const move = SPEED * DPR;
-  if (keys.ArrowUp)    player.y -= move;
-  if (keys.ArrowDown)  player.y += move;
-  if (keys.ArrowLeft)  player.x -= move;
-  if (keys.ArrowRight) player.x += move;
-
-  // bounds
-  const pSize = PLAYER_SIZE * DPR;
-  player.x = clamp(player.x, 0, CANVAS.width  - pSize);
-  player.y = clamp(player.y, 0, CANVAS.height - pSize);
-
-  // collisions with tokens
-  for (let i = tokens.length - 1; i >= 0; i--) {
-    if (rectsOverlap({x:player.x,y:player.y}, {x:tokens[i].x,y:tokens[i].y}, pSize, TOKEN_SIZE*DPR)) {
-      tokens.splice(i, 1);
-      collected++;
-      SCORE_EL.textContent = `Score: ${collected} / ${TARGET_TOKENS}`;
-      if (collected >= TARGET_TOKENS) {
-        MSG_EL.textContent = "🎉 You collected all tokens!";
-      }
+  // collisions
+  for(const t of tokens){
+    if(t.collected) continue;
+    const dx = (player.x - t.x);
+    const dy = (player.y - t.y);
+    const r  = (player.size*0.45 + t.size*0.45);
+    if(dx*dx + dy*dy < r*r){
+      t.collected = true;
+      score++;
+      document.getElementById("score").textContent = `Score: ${score} / ${TARGET_TOKENS}`;
     }
   }
 }
 
-function draw() {
-  // clear
-  CTX.clearRect(0, 0, CANVAS.width, CANVAS.height);
-
-  // tokens
-  for (const t of tokens) {
-    CTX.drawImage(t.img, t.x, t.y, t.size*DPR, t.size*DPR);
+function draw(){
+  // background image covering canvas
+  if(bgImg){
+    // draw cover
+    const ir = bgImg.width / bgImg.height;
+    const cr = w / h;
+    let dw, dh, dx, dy;
+    if(cr > ir){   // canvas wider than image
+      dw = w; dh = w/ir; dx = 0; dy = (h - dh)/2;
+    } else {
+      dh = h; dw = h*ir; dy = 0; dx = (w - dw)/2;
+    }
+    CTX.drawImage(bgImg, dx, dy, dw, dh);
+  } else {
+    CTX.clearRect(0,0,w,h);
   }
 
-  // player
-  CTX.drawImage(playerImg, player.x, player.y, PLAYER_SIZE*DPR, PLAYER_SIZE*DPR);
+  // draw tokens
+  for(const t of tokens){
+    if(t.collected) continue;
+    CTX.drawImage(tokenImg, t.x - t.size/2, t.y - t.size/2, t.size, t.size);
+  }
+
+  // draw player on top
+  CTX.drawImage(playerImg, player.x - player.size/2, player.y - player.size/2, player.size, player.size);
+
+  // rim (nice frame)
+  CTX.lineWidth = 6;
+  CTX.strokeStyle = "#323232";
+  CTX.strokeRect(3,3,w-6,h-6);
 }
 
-function loop() {
-  update();
+function loop(ts){
+  const dt = Math.min(32, ts - lastTs) / 16.6667; // ~60fps step
+  lastTs = ts;
+  update(dt);
   draw();
   requestAnimationFrame(loop);
 }
 
-// ====== resize for DPR crispness ======
-function resizeCanvas() {
-  // Keep CSS size responsive, but set actual pixel buffer by DPR
-  const cssWidth  = Math.min(700, Math.floor(window.innerWidth * 0.95));
-  const cssHeight = Math.floor(cssWidth * 0.74); // aspect
-  CANVAS.style.width  = cssWidth + "px";
-  CANVAS.style.height = cssHeight + "px";
-  CANVAS.width  = Math.floor(cssWidth  * DPR);
-  CANVAS.height = Math.floor(cssHeight * DPR);
+// === BOOT ===
+async function start(){
+  [playerImg, tokenImg, bgImg] = await Promise.all([
+    loadImage(PLAYER_SRC),
+    loadImage(TOKEN_SRC),
+    loadImage(BG_SRC),
+  ]);
+
+  setCanvasSize();
+  resetPlayer();
+  spawnTokens(TARGET_TOKENS);
+  document.getElementById("score").textContent = `Score: ${score} / ${TARGET_TOKENS}`;
+
+  window.addEventListener("resize", ()=>{ setCanvasSize(); }, {passive:true});
+  window.addEventListener("orientationchange", ()=>{ setTimeout(setCanvasSize, 250); });
+
+  window.addEventListener("keydown", keyDown);
+  window.addEventListener("keyup",   keyUp);
+
+  requestAnimationFrame(ts=>{ lastTs = ts; loop(ts); });
 }
-window.addEventListener("resize", () => {
-  const oldW = CANVAS.width, oldH = CANVAS.height;
-  resizeCanvas();
-  // keep player roughly in same relative spot
-  player.x = player.x * (CANVAS.width/oldW);
-  player.y = player.y * (CANVAS.height/oldH);
-  // respawn tokens to fit new bounds if none remain
-  if (tokens.length === 0 && collected < TARGET_TOKENS) spawnTokens(TARGET_TOKENS - collected, tokenImg);
-});
 
-// ====== boot ======
-(async function start() {
-  resizeCanvas();
-
-  try {
-    [playerImg, tokenImg] = await Promise.all([
-      loadImage(PLAYER_SRC),
-      loadImage(TOKEN_SRC),
-    ]);
-  } catch (e) {
-    console.error("Image load failed", e);
-    MSG_EL.textContent = "⚠️ Could not load images. Check filenames.";
-    return;
-  }
-
-  collected = 0;
-  SCORE_EL.textContent = `Score: ${collected} / ${TARGET_TOKENS}`;
-  MSG_EL.textContent = "";
-  spawnTokens(TARGET_TOKENS, tokenImg);
-
-  requestAnimationFrame(loop);
-})();
+start();
