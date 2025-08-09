@@ -1,35 +1,51 @@
-:root{
-  --sky:#9fd3e6;
-  --panel:#e9f5ff;
-  --ink:#223;
-  --frame:#2f2f35;
-  --shadow: 0 12px 30px rgba(0,0,0,.12);
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--sky);color:var(--ink);font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial}
-.wrap{max-width:720px;margin:0 auto;padding:16px}
-h1{margin:.25rem 0 0;font-weight:800;letter-spacing:.3px;font-size:clamp(22px,5vw,40px)}
-.sub{margin:.25rem 0 1rem;color:#2a4150;opacity:.85}
-#frame{
-  background:var(--panel);
-  border:10px solid var(--frame);
-  border-radius:22px;
-  padding:14px;
-  box-shadow:var(--shadow);
-}
-#game{display:block;width:100%;height:auto;touch-action:none;}
-#hud{
-  display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:14px;
-  margin:14px auto 0;color:#1d3341;font-weight:700
-}
-#hud div{background:rgba(255,255,255,.35);padding:.6rem .8rem;border-radius:12px}
-.palm{filter:drop-shadow(0 3px 0 rgba(0,0,0,.07))}
-#errorBox{
-  position:fixed;inset:auto 12px 12px 12px;background:#2b2b2b;color:#fff;
-  padding:12px 14px;border-radius:10px;box-shadow:var(--shadow);font-size:.9rem;white-space:pre-wrap
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: #8fc8e3;
+  color: #0e2a35;
+  text-align: center;
 }
 
-/* Small phones */
-@media (max-width:420px){
-  #hud{grid-template-columns:1fr 1fr;grid-auto-rows:minmax(44px,auto)}
+header { padding: 14px 12px 8px; }
+h1 { margin: 0 0 6px; font-size: clamp(22px, 4.8vw, 40px); }
+h1 span { filter: drop-shadow(0 1px 0 rgba(0,0,0,.15)); }
+header p { margin: 0; opacity: .8; font-size: clamp(14px, 3.3vw, 18px); }
+
+main { padding: 10px 12px 20px; }
+#frame {
+  margin: 0 auto 10px;
+  width: min(92vw, 560px);
+  aspect-ratio: 1 / 1;
+  border-radius: 22px;
+  background: linear-gradient(#eaf6ff, #d5eefe);
+  box-shadow:
+    inset 0 0 0 10px rgba(0,0,0,.15),
+    0 12px 26px rgba(0,0,0,.15);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+#game {
+  width: 94%;
+  height: 94%;
+  touch-action: none; /* allow custom swipe */
+  border-radius: 12px;
+}
+
+#hud {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  align-items: baseline;
+  font-weight: 700;
+  font-size: clamp(16px, 3.8vw, 22px);
+}
+#status { font-weight: 600; color: #0c6; }
+
+footer {
+  padding: 10px 0 24px;
+  opacity: .65;
+  font-size: 14px;
 }
