@@ -1,32 +1,19 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MrPi Island Quest</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- Phaser 3 engine -->
-  <script src="https://unpkg.com/phaser@3.70.0/dist/phaser.min.js"></script>
 </head>
 <body>
-  <main class="wrap">
-    <h1>MrPi Island Quest 🌴</h1>
-    <p class="hint">Collect all golden MrPi tokens. Arrows, swipe, or tap controls work.</p>
+  <h1>MrPi Island Quest 🌴</h1>
+  <p class="hint">Swipe or tap in the play area to move MrPi. Keyboard arrows work on desktop.</p>
 
-    <div id="game"></div>
+  <div id="game"></div>
 
-    <!-- On-screen buttons (mobile) -->
-    <div id="controls" class="controls">
-      <button class="btn" id="up">▲</button>
-      <div class="row">
-        <button class="btn" id="left">◀</button>
-        <button class="btn" id="down">▼</button>
-        <button class="btn" id="right">▶</button>
-      </div>
-    </div>
-  </main>
-
-  <!-- Load the game logic -->
-  <script src="game.js"></script>
+  <!-- Phaser CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
