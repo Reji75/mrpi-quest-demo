@@ -3,17 +3,32 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MrPi Island Quest</title>
+  <title>MrPi Island Quest 🌴</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>MrPi Island Quest 🌴</h1>
-  <p class="hint">Swipe or tap in the play area to move MrPi. Keyboard arrows work on desktop.</p>
+  <header>
+    <h1>MrPi Island Quest 🌴</h1>
+    <p class="sub">Swipe/tap to move. Arrow keys on desktop. Enjoy the cutscenes!</p>
+  </header>
 
-  <div id="game"></div>
+  <main>
+    <canvas id="game" width="640" height="400" aria-label="MrPi Island Quest game canvas"></canvas>
 
-  <!-- Phaser CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
-  <script src="script.js"></script>
+    <!-- Touch joystick (auto-hidden on desktop) -->
+    <div id="joystick" class="joy">
+      <div class="stick"></div>
+    </div>
+
+    <!-- UI overlay for dialog / prompts -->
+    <div id="dialog" class="dialog hidden"></div>
+    <button id="actionBtn" class="btn hidden">Continue</button>
+  </main>
+
+  <footer>
+    <p class="tiny">Demo build — no downloads or tracking.</p>
+  </footer>
+
+  <script type="module" src="game.js"></script>
 </body>
 </html>
