@@ -1,296 +1,169 @@
-/* MrPi Island Quest — Isometric Prototype (Phaser 3) */
-/* No external assets: everything is drawn at runtime */
+// game.js — MrPi Island Quest (isometric-look, full-screen fix)
 
-(() => {
-  const TILE_W = 64;      // diamond width
-  const TILE_H = 32;      // diamond height
-  const MAP_W  = 12;      // grid width
-  const MAP_H  = 12;      // grid height
+// ---- Phaser config ---------------------------------------------------------
+const GAME_BG = 0x7ec6e8; // ocean blue (fills everything)
+const config = {
+  type: Phaser.AUTO,
+  parent: 'game',
+  backgroundColor: GAME_BG,
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: 720,   // logical canvas size (will scale to fit)
+    height: 720
+  },
+  physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
+  scene: { preload, create, update }
+};
 
-  let score = 0;
-  let lives = 3;
-  const hud = {
-    score: () => document.getElementById('score').textContent = score,
-    lives: () => document.getElementById('lives').textContent = lives,
-    status: (t) => document.getElementById('status').textContent = t
-  };
+let game = new Phaser.Game(config);
 
-  // isometric helpers
-  const isoToScreen = (ix, iy, iz = 0) => ({
-    x: (ix - iy) * (TILE_W/2),
-    y: (ix + iy) * (TILE_H/2) - iz
-  });
+// ---- helpers ---------------------------------------------------------------
+function drawDiamond(g, cx, cy, w, h, fill, alpha = 1, line = 0x000000, lw = 0) {
+  const pts = [
+    { x: cx,     y: cy - h / 2 }, // top
+    { x: cx + w / 2, y: cy },     // right
+    { x: cx,     y: cy + h / 2 }, // bottom
+    { x: cx - w / 2, y: cy }      // left
+  ];
+  g.fillStyle(fill, alpha);
+  g.lineStyle(lw, line, lw ? 1 : 0);
+  g.beginPath();
+  g.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+  g.closePath();
+  g.fillPath();
+  if (lw) g.strokePath();
+}
 
-  class IsoScene extends Phaser.Scene {
-    constructor(){ super('iso'); }
+// ---- scene state -----------------------------------------------------------
+let player, cursors, keys, tokens, scoreText, statusText;
+let pointerTarget = null;
+let islandBounds = { cx: 0, cy: 0, w: 0, h: 0, innerW: 0, innerH: 0 };
 
-    preload(){}
+// ---- preload ---------------------------------------------------------------
+function preload() {
+  this.load.image('player', 'mrpi_logo_transparent.png');
+  this.load.image('token',  'mrpi_token_transparent.png');
+}
 
-    create(){
-      // Fit canvas to parent #game
-      const parent = document.getElementById('game');
-      const w = parent.clientWidth;
-      const h = parent.clientHeight;
+// ---- create ---------------------------------------------------------------
+function create() {
+  const W = this.scale.width;
+  const H = this.scale.height;
+  const cx = W / 2;
+  const cy = H * 0.52;
 
-      this.cameras.main.setBackgroundColor(0x000000); // hidden by container style
-      this.center = new Phaser.Math.Vector2(w/2, h/2 + 40);
+  // Fill background (prevents any black bars)
+  this.cameras.main.setBackgroundColor(GAME_BG);
 
-      // Group/containers
-      this.world = this.add.container(this.center.x, this.center.y);
+  // Draw “isometric” island layers (diamonds)
+  const g = this.add.graphics();
+  const size = Math.min(W, H) * 0.92; // overall island footprint
+  const waterW = size, waterH = size * 0.62;
+  const grassW = waterW * 0.78, grassH = waterH * 0.78;
+  const sandW  = grassW * 0.60, sandH  = grassH * 0.60;
 
-      // Create a very simple round island mask (just for vibe)
-      this._drawBackdrop();
+  drawDiamond(g, cx, cy, waterW, waterH, 0xbfe7ff); // outer water
+  drawDiamond(g, cx, cy, grassW, grassH, 0x3aa85b); // island grass
+  drawDiamond(g, cx, cy, sandW,  sandH,  0xf3d59b); // beach/sand
+  // subtle outline
+  drawDiamond(g, cx, cy, grassW, grassH, 0xffffff, 0, 0x1b3a4b, 2);
 
-      // Build diamond tiles
-      this._buildTiles();
+  // record bounds for clamping (movement kept within “grass”)
+  islandBounds = { cx, cy, w: grassW, h: grassH, innerW: sandW, innerH: sandH };
 
-      // Entities
-      this.player = this._spawnPlayer(6, 6);
-      this.coins  = this._scatterCoins(7);
-      this.crabs  = this._spawnCrabs(3);
+  // Player
+  const pScale = sandW / 900; // scales nicely across devices
+  player = this.physics.add.image(cx, cy - sandH * 0.1, 'player')
+    .setScale(pScale)
+    .setCollideWorldBounds(true)
+    .setDepth(10);
 
-      // Input
-      this.cursors = this.input.keyboard.createCursorKeys();
-      this.wasd = this.input.keyboard.addKeys('W,A,S,D');
+  // World bounds = canvas (we clamp to island manually)
+  this.physics.world.setBounds(0, 0, W, H);
 
-      // Swipe / tap: compute direction vector to last pointer position
-      this.pointer = null;
-      this.input.on('pointerdown', (p)=> this.pointer = p);
-      this.input.on('pointerup', ()=> this.pointer = null);
-      this.input.on('pointermove', (p)=> { if(this.pointer) this.pointer = p; });
-
-      hud.status('Ready.');
-      hud.score(); hud.lives();
-
-      // Camera little float
-      this.tweens.add({
-        targets: this.world,
-        y: this.center.y + 6,
-        duration: 1800,
-        yoyo: true, repeat:-1, ease:'sine.inOut'
-      });
-    }
-
-    _drawBackdrop(){
-      const g = this.add.graphics();
-      g.fillStyle(0xffffff, 1);
-      // soft vignette edges drawn by CSS shadows — nothing else needed here
-    }
-
-    _buildTiles(){
-      const g = this.add.graphics();
-      const ringR = 4.5; // where “water/grass/sand” color rings will change
-
-      for(let y=0;y<MAP_H;y++){
-        for(let x=0;x<MAP_W;x++){
-          // distance from center for tint rings
-          const dx = x - MAP_W/2 + 0.5;
-          const dy = y - MAP_H/2 + 0.5;
-          const d = Math.hypot(dx,dy);
-
-          let color;
-          if (d > ringR+2) color = 0xd0ecff;     // pale water
-          else if (d > ringR) color = 0xa5d6ff;  // deeper water ring
-          else if (d > ringR-2) color = 0x53a86a;// grass ring
-          else color = 0xe8c98e;                 // sand center
-
-          const p = isoToScreen(x, y);
-          g.fillStyle(color, 1);
-          g.beginPath();
-          // draw diamond tile
-          g.moveTo(this.center.x + p.x,                 this.center.y + p.y);
-          g.lineTo(this.center.x + p.x + TILE_W/2,      this.center.y + p.y + TILE_H/2);
-          g.lineTo(this.center.x + p.x,                 this.center.y + p.y + TILE_H);
-          g.lineTo(this.center.x + p.x - TILE_W/2,      this.center.y + p.y + TILE_H/2);
-          g.closePath();
-          g.fill();
-        }
-      }
-
-      // One simple “tree”
-      const t = isoToScreen(8, 7);
-      const tree = this.add.container(this.center.x + t.x, this.center.y + t.y + TILE_H/2);
-      const trunk = this.add.rectangle(0, 0, 10, 24, 0x6b4c2e).setOrigin(0.5,1);
-      const crown = this.add.ellipse(0, -22, 90, 60, 0x2f8c46).setStrokeStyle(4, 0x246a36);
-      tree.add([crown, trunk]);
-      this.world.add(tree);
-    }
-
-    _spawnPlayer(gx, gy){
-      const p = this.add.container(0,0);
-      const face = this.add.circle(0, -10, 12, 0xffffff).setStrokeStyle(3,0x222222);
-      const hat  = this.add.rectangle(0, -22, 26, 8, 0x1d2330).setOrigin(0.5,1);
-      const brim = this.add.rectangle(0, -22, 34, 4, 0x1d2330).setOrigin(0.5,0.5);
-      const eyeL = this.add.circle(-6, -12, 3, 0x111111);
-      const eyeR = this.add.circle( 6, -12, 3, 0x111111);
-      const tux  = this.add.ellipse(0, 6, 24, 28, 0x1b2a38);
-      p.add([tux, face, hat, brim, eyeL, eyeR]);
-
-      p.gx = gx; p.gy = gy; p.iz = 0;
-      p.speed = 6; // tiles per second
-      p.target = {gx, gy};
-      this._placeIso(p);
-      this.world.add(p);
-
-      // bobbing
-      this.tweens.add({ targets:p, y: '+=3', duration: 800, yoyo:true, repeat:-1, ease:'sine.inOut' });
-      return p;
-    }
-
-    _placeIso(obj){
-      const s = isoToScreen(obj.gx, obj.gy, obj.iz);
-      obj.x = s.x; obj.y = s.y;
-    }
-
-    _scatterCoins(n){
-      const group = this.add.group();
-      let placed = 0;
-      while(placed < n){
-        const gx = Phaser.Math.Between(2, MAP_W-3);
-        const gy = Phaser.Math.Between(2, MAP_H-3);
-        // avoid player start
-        if (gx === 6 && gy === 6) continue;
-
-        const c = this.add.container(0,0);
-        const s = this.add.circle(0,0, 8, 0xf2b20c).setStrokeStyle(3, 0x9a6a00);
-        const shine = this.add.arc(0,-3, 6, 300, 20, false, 0xffffff, 0.85);
-        c.add([s, shine]);
-        c.gx = gx; c.gy = gy; c.iz = 2;
-        this._placeIso(c);
-        this.world.add(c);
-        group.add(c);
-
-        this.tweens.add({targets:c, y:'-=4', duration:1000, yoyo:true, repeat:-1, ease:'sine.inOut'});
-        placed++;
-      }
-      return group;
-    }
-
-    _spawnCrabs(count){
-      const g = this.add.group();
-      for(let i=0;i<count;i++){
-        const pathR = Phaser.Math.Between(3, 4); // ring to patrol
-        let theta = Phaser.Math.FloatBetween(0, Math.PI*2);
-        const crab = this.add.container(0,0);
-        const body = this.add.circle(0,0,10,0xe24b3c).setStrokeStyle(3,0xb13528);
-        const eye1 = this.add.circle(-4,-6,2,0xffffff).setStrokeStyle(2,0x000000);
-        const eye2 = this.add.circle( 4,-6,2,0xffffff).setStrokeStyle(2,0x000000);
-        const dot1 = this.add.circle(-4,-6,1,0x000000);
-        const dot2 = this.add.circle( 4,-6,1,0x000000);
-        crab.add([body, eye1, eye2, dot1, dot2]);
-        crab.theta = theta; crab.r = pathR;
-        crab.speed = 0.8 + Math.random()*0.6; // radians/sec
-        this._placeCrab(crab);
-        this.world.add(crab);
-        g.add(crab);
-
-        this.tweens.add({targets:crab, y:'+=2', duration:700, yoyo:true, repeat:-1, ease:'sine.inOut'});
-      }
-      return g;
-    }
-    _placeCrab(crab){
-      // convert polar ring position into grid approx (centered)
-      const cx = MAP_W/2, cy = MAP_H/2;
-      const gx = cx + crab.r*Math.cos(crab.theta);
-      const gy = cy + crab.r*Math.sin(crab.theta);
-      const s = isoToScreen(gx, gy, 1);
-      crab.x = s.x; crab.y = s.y;
-      crab.gx = gx; crab.gy = gy;
-    }
-
-    update(time, dtMS){
-      const dt = dtMS/1000;
-
-      // keyboard
-      let dx=0, dy=0;
-      if (this.cursors.left.isDown || this.wasd.A.isDown)  dx -= 1;
-      if (this.cursors.right.isDown|| this.wasd.D.isDown)  dx += 1;
-      if (this.cursors.up.isDown   || this.wasd.W.isDown)  dy -= 1;
-      if (this.cursors.down.isDown || this.wasd.S.isDown)  dy += 1;
-
-      // swipe / drag
-      if (this.pointer){
-        // vector from player screen pos to pointer
-        const ps = isoToScreen(this.player.gx, this.player.gy);
-        const px = this.center.x + ps.x;
-        const py = this.center.y + ps.y;
-        const vx = this.pointer.x - px;
-        const vy = this.pointer.y - py;
-        // convert screen vector toward iso axes (roughly)
-        const toIsoX =  (vx/(TILE_W/2) - vy/(TILE_H/2))/2;
-        const toIsoY = -(vx/(TILE_W/2) + vy/(TILE_H/2))/2;
-        dx += Phaser.Math.Clamp(toIsoX, -1, 1);
-        dy += Phaser.Math.Clamp(toIsoY, -1, 1);
-      }
-
-      // normalize
-      if (dx || dy){
-        const len = Math.hypot(dx,dy) || 1;
-        dx/=len; dy/=len;
-        this.player.gx = Phaser.Math.Clamp(this.player.gx + dx*this.player.speed*dt, 1, MAP_W-2);
-        this.player.gy = Phaser.Math.Clamp(this.player.gy + dy*this.player.speed*dt, 1, MAP_H-2);
-        this._placeIso(this.player);
-      }
-
-      // wobble “jump” when moving
-      this.player.iz = (dx||dy) ? 6*Math.abs(Math.sin(time*0.01)) : 0;
-
-      // coin collection
-      this.coins.children.iterate((c)=>{
-        if (!c) return;
-        const d = Phaser.Math.Distance.Between(c.gx, c.gy, this.player.gx, this.player.gy);
-        if (d < 0.7){
-          c.destroy();
-          score++; hud.score();
-          hud.status('Nice! +1 MrPi token');
-          this.tweens.addCounter({
-            from:0, to:100, duration:350,
-            onUpdate: t=>{
-              const k = t.getValue()/100;
-              this.cameras.main.setZoom(1+0.02*Math.sin(k*Math.PI));
-            },
-            onComplete: ()=> this.cameras.main.setZoom(1)
-          });
-        }
-      });
-
-      // crabs patrol + collision
-      this.crabs.children.iterate((crab)=>{
-        crab.theta += crab.speed*dt;
-        this._placeCrab(crab);
-        const d = Phaser.Math.Distance.Between(crab.gx, crab.gy, this.player.gx, this.player.gy);
-        if (d < 0.7){
-          // hit once then give brief i-frames
-          if (!crab._cool){
-            crab._cool = true;
-            this.time.delayedCall(600, ()=> crab._cool=false);
-            lives = Math.max(0, lives-1); hud.lives();
-            hud.status('Ouch! Crab got you.');
-            this.tweens.add({targets:this.world, x:this.center.x+6, duration:60, yoyo:true, repeat:6,
-              onComplete:()=> this.world.x = this.center.x});
-          }
-        }
-      });
-    }
+  // Tokens in a ring on the sand
+  tokens = this.physics.add.group();
+  const ringR = (sandW / 2) * 0.75;
+  const tokenCount = 7;
+  for (let i = 0; i < tokenCount; i++) {
+    const a = (i / tokenCount) * Math.PI * 2 + Math.PI / 8;
+    const tx = cx + Math.cos(a) * ringR;
+    const ty = cy + Math.sin(a) * (ringR * 0.62); // squash for iso look
+    const t = tokens.create(tx, ty, 'token').setScale(pScale * 0.8).setDepth(5);
+    t.body.setCircle((t.width * t.scaleX) / 2);
   }
 
-  // ----- Boot Phaser -----
-  const parent = document.getElementById('game');
-  const config = {
-    type: Phaser.AUTO,
-    parent: 'game',
-    width: parent.clientWidth,
-    height: parent.clientHeight,
-    backgroundColor: '#bfe6ff',
-    scene: [IsoScene],
-    physics: { default: 'arcade' } // (unused but fine)
-  };
-  const game = new Phaser.Game(config);
+  // Score UI
+  const style = { fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto',
+                  fontSize: '28px', color: '#112', fontStyle: '700' };
+  scoreText = this.add.text(W / 2, H - 40, `Score: 0 / ${tokenCount}`, style)
+    .setOrigin(0.5, 0.5)
+    .setDepth(20);
+  statusText = this.add.text(W / 2, H - 10, `Ready.`, { ...style, fontSize: '20px', color: '#155' })
+    .setOrigin(0.5, 1)
+    .setDepth(20);
 
-  // Resize with container
-  window.addEventListener('resize', () => {
-    const w = parent.clientWidth;
-    const h = parent.clientHeight;
-    game.scale.resize(w, h);
+  // Collect overlap
+  this.physics.add.overlap(player, tokens, (_, coin) => {
+    coin.disableBody(true, true);
+    const collected = tokenCount - tokens.countActive(true);
+    scoreText.setText(`Score: ${collected} / ${tokenCount}`);
+    statusText.setText(collected === tokenCount ? 'All tokens collected! 🎉' : 'Nice! +1 MrPi token');
   });
-})();
+
+  // Input: keyboard
+  cursors = this.input.keyboard.createCursorKeys();
+  keys = this.input.keyboard.addKeys('W,A,S,D');
+
+  // Input: tap / drag toward point
+  this.input.on('pointerdown', p => (pointerTarget = { x: p.x, y: p.y }));
+  this.input.on('pointermove', p => { if (p.isDown) pointerTarget = { x: p.x, y: p.y }; });
+  this.input.on('pointerup', () => (pointerTarget = null));
+
+  // Resize handler keeps everything centered
+  this.scale.on('resize', () => {
+    this.scene.restart(); // simple + robust: redraw island to new size
+  });
+}
+
+// ---- update ---------------------------------------------------------------
+function update(time, delta) {
+  if (!player) return;
+
+  const speed = 180;
+  let vx = 0, vy = 0;
+
+  // Keyboard move
+  if (cursors.left.isDown || keys.A.isDown) vx -= speed;
+  if (cursors.right.isDown || keys.D.isDown) vx += speed;
+  if (cursors.up.isDown || keys.W.isDown) vy -= speed;
+  if (cursors.down.isDown || keys.S.isDown) vy += speed;
+
+  // Pointer chase (if active)
+  if (pointerTarget && vx === 0 && vy === 0) {
+    const dx = pointerTarget.x - player.x;
+    const dy = pointerTarget.y - player.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const follow = Math.min(len, speed);
+    vx = (dx / len) * follow;
+    vy = (dy / len) * follow;
+  }
+
+  player.setVelocity(vx, vy);
+
+  // Clamp inside the grass diamond for better “island” feel
+  const { cx, cy, w, h } = islandBounds;
+  // Convert to diamond “Manhattan-like” boundary check
+  const rx = Math.abs(player.x - cx) / (w / 2);
+  const ry = Math.abs(player.y - cy) / (h / 2);
+  if (rx + ry > 1) {
+    // push back toward center a bit
+    const dirx = Math.sign(player.x - cx) || 1;
+    const diry = Math.sign(player.y - cy) || 1;
+    player.x -= dirx * 2;
+    player.y -= diry * 2;
+    player.setVelocity(0, 0);
+  }
+}
