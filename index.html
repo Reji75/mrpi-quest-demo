@@ -1,31 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MrPi Island Quest</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MrPi Island Quest 🌴</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
+  <div class="container">
     <h1>MrPi Island Quest 🌴</h1>
-    <p>Swipe / tap inside the play area to move. Arrow keys or WASD on desktop.</p>
-  </header>
+    <p class="instructions">
+      Swipe / tap inside the play area to move. Arrow keys or WASD on desktop.
+    </p>
 
-  <main>
-    <div class="stage">
-      <canvas id="play" width="640" height="640" aria-label="Game canvas"></canvas>
+    <!-- Game area -->
+    <div id="game-container">
+      <canvas id="gameCanvas" width="400" height="400"></canvas>
     </div>
 
+    <!-- Game info -->
     <div class="hud">
       <div>Score: <span id="score">0</span></div>
       <div>Lives: <span id="lives">3</span></div>
-      <div>Time: <span id="time">60</span>s</div>
+      <div>Time: <span id="timer">60</span>s</div>
     </div>
-    <p id="status" class="status">Ready.</p>
-  </main>
+    <div class="status">
+      Status: <span id="status">Ready.</span>
+    </div>
 
-  <footer class="note">Isometric demo build — no tracking, no downloads.</footer>
+    <p class="note">
+      Isometric demo build — no tracking, no downloads.
+    </p>
+  </div>
 
   <script src="game.js"></script>
 </body>
