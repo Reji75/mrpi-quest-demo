@@ -1,111 +1,167 @@
-// Simple Phaser 3 top-down collector demo
+// ----- basic setup -----
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false });
+const W = canvas.width, H = canvas.height;
 
-const WORLD_SIZE = 960;        // world is square
-const TOKENS_TO_COLLECT = 7;   // how many golden tokens
-
+// world
+const island = { cx: W/2, cy: H/2, waterR: 300, grassR: 240, sandR: 160 };
+const player = { x: W/2, y: H/2, r: 22, speed: 3.2 };
+let tokens = [];
 let score = 0;
-const scoreEl = () => document.getElementById('score');
+const SCORE_EL = document.getElementById('score');
 
-const config = {
-  type: Phaser.AUTO,
-  parent: 'game',
-  backgroundColor: '#cfeefe',
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: 480,
-    height: 480
-  },
-  physics: {
-    default: 'arcade',
-    arcade: { gravity: { y: 0 }, debug: false }
-  },
-  scene: { preload, create, update }
-};
+// images (with cache-bust + fallbacks)
+const v = '?v=' + Date.now();
+const imgPlayer = new Image();
+imgPlayer.src = 'mrpi_logo_transparent.png' + v;
+const imgToken = new Image();
+imgToken.src = 'mrpi_token_transparent.png' + v;
 
-const game = new Phaser.Game(config);
+let readyCount = 0;
+function ready(){ if(++readyCount >= 2) start(); }
+imgPlayer.onload = ready; imgToken.onload = ready;
+imgPlayer.onerror = ready; imgToken.onerror = ready; // still start if missing
 
-function preload() {
-  // Use the images you already uploaded at repo root.
-  // Phaser files live in phaser-demo/, so we go up one folder.
-  this.load.image('player', '../mrpi_logo_transparent.png');
-  this.load.image('token', '../mrpi_token_transparent.png');
+// ----- helpers -----
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+const dist2 = (a,b,x,y) => (a-x)*(a-x)+(b-y)*(b-y);
 
-  // Tiny island tiles drawn with graphics -> converted to texture
+// keep player within the grass ring
+function keepOnIsland(p){
+  const dx = p.x - island.cx, dy = p.y - island.cy;
+  const d = Math.sqrt(dx*dx+dy*dy);
+  const max = island.grassR - p.r;
+  if(d > max){
+    const k = max / d;
+    p.x = island.cx + dx * k;
+    p.y = island.cy + dy * k;
+  }
 }
 
-function create() {
-  // Make a soft island background
-  const g = this.add.graphics();
-  const cx = config.scale.width / 2;
-  const cy = config.scale.height / 2;
-  const R = 210;
+// spawn tokens not overlapping center
+function spawnTokens(n=7){
+  tokens.length = 0;
+  let tries = 0;
+  while(tokens.length < n && tries++ < 500){
+    const ang = Math.random()*Math.PI*2;
+    const rad = island.sandR + 14 + Math.random()*(island.grassR-36 - (island.sandR+14));
+    const x = island.cx + Math.cos(ang)*rad;
+    const y = island.cy + Math.sin(ang)*rad;
+    // avoid clustering too close
+    if(tokens.every(t => dist2(t.x,t.y,x,y) > 60*60)){
+      tokens.push({x, y, r: 20, taken:false});
+    }
+  }
+}
 
-  g.fillStyle(0x9ad7f5, 1); g.fillCircle(cx, cy, R);        // ocean
-  g.fillStyle(0x79c36e, 1); g.fillCircle(cx, cy, R * 0.78);  // grass ring
-  g.fillStyle(0xefd28f, 1); g.fillCircle(cx, cy, R * 0.55);  // sand
-  g.generateTexture('island', config.scale.width, config.scale.height);
-  g.destroy();
+// draw concentric island
+function drawIsland(){
+  // sky gradient
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#cfefff'); g.addColorStop(1, '#b2e2ff');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 
-  this.add.image(cx, cy, 'island').setDepth(0);
+  // water
+  ctx.fillStyle = '#78c0e3';
+  ctx.beginPath(); ctx.arc(island.cx, island.cy, island.waterR, 0, Math.PI*2); ctx.fill();
 
-  // Player
-  this.player = this.physics.add.image(cx, cy - 30, 'player')
-    .setScale(0.13)            // make the panda small
-    .setCircle(350, 150, 150)  // approximate circular body from source png
-    .setCollideWorldBounds(true);
+  // grass
+  ctx.fillStyle = '#48a852';
+  ctx.beginPath(); ctx.arc(island.cx, island.cy, island.grassR, 0, Math.PI*2); ctx.fill();
 
-  // Token group
-  this.tokens = this.physics.add.group();
-  for (let i = 0; i < TOKENS_TO_COLLECT; i++) {
-    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-    const radius = Phaser.Math.Between(30, 140);
-    const x = cx + Math.cos(angle) * radius;
-    const y = cy + Math.sin(angle) * radius;
-    const t = this.tokens.create(x, y, 'token')
-      .setScale(0.12)
-      .setCircle(430, 85, 85)
-      .setImmovable(true);
-    t.body.setAllowGravity(false);
+  // sand
+  const sandGrad = ctx.createRadialGradient(island.cx, island.cy, 10, island.cx, island.cy, island.sandR);
+  sandGrad.addColorStop(0, '#f6d78b'); sandGrad.addColorStop(1, '#eec36f');
+  ctx.fillStyle = sandGrad; ctx.beginPath(); ctx.arc(island.cx, island.cy, island.sandR, 0, Math.PI*2); ctx.fill();
+
+  // one tree (simple)
+  ctx.fillStyle = '#6e4a1f';
+  ctx.fillRect(island.cx+110, island.cy-20, 16, 80);
+  ctx.fillStyle = '#2e8b57';
+  ctx.beginPath(); ctx.arc(island.cx+118, island.cy-30, 70, 0, Math.PI*2); ctx.fill();
+}
+
+// draw player/token with fallback
+function drawSprite(img, x, y, size){
+  if(img.complete && img.naturalWidth){
+    const s = size*2;
+    ctx.drawImage(img, x - s/2, y - s/2, s, s);
+  } else {
+    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+// ----- input (keyboard + swipe/tap) -----
+const keys = { ArrowUp:false, ArrowDown:false, ArrowLeft:false, ArrowRight:false };
+addEventListener('keydown', e => { if(e.key in keys){ keys[e.key]=true; e.preventDefault(); }});
+addEventListener('keyup',   e => { if(e.key in keys){ keys[e.key]=false; }});
+
+// swipe/tap to pathfind a little toward pointer
+let target = null;
+function setTargetFromEvent(ev){
+  const r = canvas.getBoundingClientRect();
+  const x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
+  const y = (ev.touches ? ev.touches[0].clientY : ev.clientY) - r.top;
+  target = { x: x * (canvas.width / r.width), y: y * (canvas.height / r.height) };
+}
+canvas.addEventListener('pointerdown', setTargetFromEvent, {passive:true});
+canvas.addEventListener('touchstart', setTargetFromEvent, {passive:true});
+
+// ----- main loop -----
+function update(){
+  // keyboard move
+  let vx = 0, vy = 0;
+  if(keys.ArrowLeft)  vx -= 1;
+  if(keys.ArrowRight) vx += 1;
+  if(keys.ArrowUp)    vy -= 1;
+  if(keys.ArrowDown)  vy += 1;
+  if(vx || vy){
+    const l = Math.hypot(vx,vy); vx/=l; vy/=l;
+    player.x += vx * player.speed; player.y += vy * player.speed;
+    target = null;
   }
 
-  // Overlap = collect
-  this.physics.add.overlap(this.player, this.tokens, (_p, token) => {
-    token.disableBody(true, true);
-    score++;
-    scoreEl().textContent = `Score: ${score} / ${TOKENS_TO_COLLECT}`;
-    if (score === TOKENS_TO_COLLECT) {
-      this.time.delayedCall(100, () => {
-        this.add.text(cx, cy, '🎉 All tokens!', { fontSize: '28px', color: '#116622' })
-          .setOrigin(0.5).setDepth(10);
-      });
+  // move toward target if set
+  if(target){
+    const dx = target.x - player.x, dy = target.y - player.y;
+    const d = Math.hypot(dx,dy);
+    if(d < 2){ target = null; }
+    else { player.x += (dx/d) * player.speed; player.y += (dy/d) * player.speed; }
+  }
+
+  keepOnIsland(player);
+
+  // collect tokens
+  for(const t of tokens){
+    if(!t.taken && dist2(player.x, player.y, t.x, t.y) < (player.r + t.r)*(player.r + t.r)){
+      t.taken = true; score++; SCORE_EL.textContent = `Score: ${score} / ${tokens.length}`;
     }
-  });
+  }
+}
 
-  // Input
-  this.cursors = this.input.keyboard.createCursorKeys();
+function draw(){
+  drawIsland();
+  // tokens
+  for(const t of tokens){ if(!t.taken) drawSprite(imgToken, t.x, t.y, t.r); }
+  // player
+  drawSprite(imgPlayer, player.x, player.y, player.r);
 
-  // Pointer/touch: move toward pointer
-  this.input.on('pointerdown', (p) => moveToward(this.player, p));
-  this.input.on('pointermove', (p) => { if (p.isDown) moveToward(this.player, p); });
+  if(score === tokens.length){
+    ctx.fillStyle = '#0a7a31';
+    ctx.font = 'bold 34px system-ui, -apple-system, Segoe UI, Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🎉 You collected all tokens!', W/2, 48);
+  }
+}
 
+function loop(){
+  update(); draw();
+  requestAnimationFrame(loop);
+}
+
+function start(){
   score = 0;
-  scoreEl().textContent = `Score: ${score} / ${TOKENS_TO_COLLECT}`;
+  SCORE_EL.textContent = 'Score: 0 / 7';
+  spawnTokens(7);
+  requestAnimationFrame(loop);
 }
-
-function update() {
-  const SPEED = 180;
-  this.player.setVelocity(0);
-
-  if (this.cursors.left.isDown)  this.player.setVelocityX(-SPEED);
-  if (this.cursors.right.isDown) this.player.setVelocityX(SPEED);
-  if (this.cursors.up.isDown)    this.player.setVelocityY(-SPEED);
-  if (this.cursors.down.isDown)  this.player.setVelocityY(SPEED);
-}
-
-function moveToward(sprite, pointer) {
-  const SPEED = 180;
-  const angle = Phaser.Math.Angle.Between(sprite.x, sprite.y, pointer.x, pointer.y);
-  sprite.body.velocity.x = Math.cos(angle) * SPEED;
-  sprite.body.velocity.y = Math.sin(angle) * SPEED;
-}p
