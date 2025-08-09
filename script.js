@@ -1,234 +1,247 @@
-// === CONFIG ===
-const CANVAS = document.getElementById("game");
-const CTX = CANVAS.getContext("2d");
+/* ========== Setup & Assets ========== */
 
-const PLAYER_SRC = "mrpi_logo_transparent.png";
-const TOKEN_SRC  = "mrpi_token_transparent.png";
-const BG_SRC     = "island_bg.jpg";      // <-- upload this file
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+const scoreEl = document.getElementById('score');
 
-const TARGET_TOKENS = 5;                 // how many to collect
-const SPEED_BASE = 3.6;                  // movement base speed (scaled with canvas)
-const PLAYER_SCALE = 0.13;               // relative to canvas height
-const TOKEN_SCALE  = 0.12;               // relative to canvas height
+/* Filenames in your repo root (already uploaded) */
+const IMG_PLAYER = 'mrpi_logo_transparent.png';
+const IMG_TOKEN  = 'mrpi_token_transparent.png';
 
-// === STATE ===
-let w = CANVAS.width, h = CANVAS.height;
-let player = { x: 100, y: 100, size: 48, vx: 0, vy: 0 };
+/* Logical sizing (scaled for devicePixelRatio for crispness) */
+const DPR  = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+const SIZE = (() => {
+  const w = Math.min(720, document.querySelector('.wrap').clientWidth - 8);
+  return Math.max(280, Math.floor(w)); // canvas CSS size (square)
+})();
+
+/* Player / token sizes (in CSS pixels, scaled later) */
+const PLAYER_SIZE = 56;   // MrPi bigger than coins
+const TOKEN_SIZE  = 36;
+
+let widthCSS = SIZE, heightCSS = SIZE;
+let width = Math.floor(widthCSS * DPR);
+let height = Math.floor(heightCSS * DPR);
+canvas.style.height = `${heightCSS}px`;
+canvas.style.width  = `${widthCSS}px`;
+canvas.width  = width;
+canvas.height = height;
+
+/* ========== Game State ========== */
+
+const playerImg = new Image();
+const tokenImg  = new Image();
+playerImg.src = IMG_PLAYER;
+tokenImg.src  = IMG_TOKEN;
+
+const player = { x: width / 2, y: height / 2, speed: 5 * DPR };
 let tokens = [];
+const TARGET = 5;
 let score = 0;
 
-let playerImg, tokenImg, bgImg;
-let lastTs = 0;
-
-// swipe/tap
-let touchDir = null;
-
-// === UTILS ===
-function loadImage(src){
-  return new Promise((res, rej)=>{
-    const im = new Image();
-    im.onload = ()=>res(im);
-    im.onerror = rej;
-    im.src = src + "?v=" + Date.now(); // bust cache while iterating
-  });
-}
-
-function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
-
-function rand(min, max){ return Math.random() * (max - min) + min; }
-
-function spawnTokens(n){
-  tokens.length = 0;
-  const pad = Math.max(player.size, tokenSize());
-  for(let i=0;i<n;i++){
-    tokens.push({
-      x: rand(pad, w - pad),
-      y: rand(pad, h - pad),
-      size: tokenSize(),
-      collected: false
-    });
+function spawnTokens() {
+  tokens = [];
+  for (let i = 0; i < TARGET; i++) {
+    tokens.push(randomPoint(TOKEN_SIZE * DPR * 1.2));
   }
+  score = 0;
+  updateScore();
 }
 
-function tokenSize(){ return Math.round(h * TOKEN_SCALE); }
-function playerSize(){ return Math.round(h * PLAYER_SCALE); }
-
-function resetPlayer(){
-  player.size = playerSize();
-  player.x = w * 0.15;
-  player.y = h * 0.2;
-  player.vx = player.vy = 0;
+function updateScore(msg) {
+  scoreEl.textContent = `Score: ${score} / ${TARGET}`;
+  if (msg) scoreEl.textContent += `  —  ${msg}`;
 }
 
-function setCanvasSize(){
-  // Keep a nice 7:4 aspect on wide screens, shrink on mobile width
-  const cssWidth = Math.min(760, document.querySelector(".wrap").clientWidth - 8);
-  const cssHeight = Math.round(cssWidth * (4/7));
-  CANVAS.style.width = cssWidth + "px";
-  CANVAS.style.height = cssHeight + "px";
-  // Internal pixel size = CSS * devicePixelRatio for crisp rendering
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  CANVAS.width = Math.round(cssWidth * dpr);
-  CANVAS.height = Math.round(cssHeight * dpr);
-  w = CANVAS.width; h = CANVAS.height;
+/* ========== Helpers ========== */
 
-  // scale stroke based on DPR
-  CTX.setTransform(dpr,0,0,dpr,0,0);
-
-  // rescale entities
-  resetPlayer();
-  tokens.forEach(t => t.size = tokenSize());
+function randomPoint(padding = 0) {
+  const px = Math.random() * (width - padding * 2) + padding;
+  const py = Math.random() * (height - padding * 2) + padding;
+  return { x: px, y: py };
 }
 
-// === INPUT ===
-function keyDown(e){
-  switch(e.key){
-    case "ArrowUp":    player.vy = -1; break;
-    case "ArrowDown":  player.vy =  1; break;
-    case "ArrowLeft":  player.vx = -1; break;
-    case "ArrowRight": player.vx =  1; break;
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function dist(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.hypot(dx, dy);
+}
+
+/* ========== Input (keyboard, buttons, swipe/tap) ========== */
+
+const keys = new Set();
+
+window.addEventListener('keydown', e => {
+  const k = e.key;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k)) {
+    e.preventDefault();
+    keys.add(k);
   }
-}
-function keyUp(e){
-  switch(e.key){
-    case "ArrowUp":
-    case "ArrowDown":  player.vy = 0; break;
-    case "ArrowLeft":
-    case "ArrowRight": player.vx = 0; break;
-  }
-}
-
-// touch buttons
-document.querySelectorAll("#touchControls .btn").forEach(btn=>{
-  const dir = btn.dataset.dir;
-  const set = (on)=>{
-    if(!on){ player.vx = player.vy = 0; return; }
-    if(dir==="up")    { player.vx=0; player.vy=-1; }
-    if(dir==="down")  { player.vx=0; player.vy= 1; }
-    if(dir==="left")  { player.vx=-1; player.vy=0; }
-    if(dir==="right") { player.vx= 1; player.vy=0; }
-  };
-  btn.addEventListener("touchstart", e=>{ e.preventDefault(); set(true); }, {passive:false});
-  btn.addEventListener("touchend",   e=>{ e.preventDefault(); set(false); }, {passive:false});
-  btn.addEventListener("mousedown",  ()=>set(true));
-  btn.addEventListener("mouseup",    ()=>set(false));
-  btn.addEventListener("mouseleave", ()=>set(false));
 });
 
-// swipe/tap on canvas
-let touchStart=null;
-CANVAS.addEventListener("touchstart", e=>{
-  const t=e.changedTouches[0];
-  touchStart={x:t.clientX,y:t.clientY};
-},{passive:true});
-CANVAS.addEventListener("touchend", e=>{
-  if(!touchStart) return;
-  const t=e.changedTouches[0];
-  const dx=t.clientX-touchStart.x;
-  const dy=t.clientY-touchStart.y;
-  const dead=12;
-  player.vx = player.vy = 0;
-  if(Math.abs(dx)<dead && Math.abs(dy)<dead){
-    // tap = move toward tap position a bit (nudge)
-    const rect = CANVAS.getBoundingClientRect();
-    const tx = (t.clientX-rect.left)/rect.width * w;
-    const ty = (t.clientY-rect.top)/rect.height * h;
-    const angle = Math.atan2(ty-player.y, tx-player.x);
-    player.vx = Math.cos(angle);
-    player.vy = Math.sin(angle);
-  } else {
-    if(Math.abs(dx)>Math.abs(dy)){
-      player.vx = dx>0 ? 1 : -1;
-    } else {
-      player.vy = dy>0 ? 1 : -1;
-    }
-  }
-  setTimeout(()=>{ player.vx=player.vy=0; }, 160); // short burst
-},{passive:true});
+window.addEventListener('keyup', e => keys.delete(e.key));
 
-// === GAME LOOP ===
-function update(dt){
-  const speed = SPEED_BASE * (h/480); // scale speed with canvas height
-  player.x += (player.vx * speed * dt);
-  player.y += (player.vy * speed * dt);
-  const half = player.size/2;
-  player.x = clamp(player.x, half, w-half);
-  player.y = clamp(player.y, half, h-half);
+/* On-screen buttons (mobile) */
+document.querySelectorAll('#controls .btn').forEach(btn => {
+  const dir = btn.dataset.dir;
+  btn.addEventListener('touchstart', e => { e.preventDefault(); keys.add(dirToKey(dir)); });
+  btn.addEventListener('touchend',   e => { e.preventDefault(); keys.delete(dirToKey(dir)); });
+  btn.addEventListener('mousedown',  () => keys.add(dirToKey(dir)));
+  btn.addEventListener('mouseup',    () => keys.delete(dirToKey(dir)));
+  btn.addEventListener('mouseleave', () => keys.delete(dirToKey(dir)));
+});
+
+function dirToKey(d) {
+  return d === 'up' ? 'ArrowUp'
+       : d === 'down' ? 'ArrowDown'
+       : d === 'left' ? 'ArrowLeft'
+       : 'ArrowRight';
+}
+
+/* Swipe / Tap inside canvas */
+let touchStart = null;
+canvas.addEventListener('touchstart', e => {
+  const t = e.changedTouches[0];
+  touchStart = { x: t.clientX, y: t.clientY };
+}, { passive: true });
+
+canvas.addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  if (!touchStart) return;
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const thresh = 24; // px
+  keys.clear();
+  if (Math.abs(dx) < thresh && Math.abs(dy) < thresh) {
+    // tap -> move toward nearest token
+    const nearest = tokens.reduce((best, cur) =>
+      (!best || dist(cur, player) < dist(best, player)) ? cur : best, null);
+    if (nearest) {
+      const vx = Math.sign(nearest.x - player.x);
+      const vy = Math.sign(nearest.y - player.y);
+      if (Math.abs(vx) > Math.abs(vy)) keys.add(vx < 0 ? 'ArrowLeft' : 'ArrowRight');
+      else keys.add(vy < 0 ? 'ArrowUp' : 'ArrowDown');
+      setTimeout(() => keys.clear(), 120);
+    }
+  } else {
+    if (Math.abs(dx) > Math.abs(dy)) keys.add(dx > 0 ? 'ArrowRight' : 'ArrowLeft');
+    else keys.add(dy > 0 ? 'ArrowDown' : 'ArrowUp');
+    setTimeout(() => keys.clear(), 160);
+  }
+});
+
+/* ========== Drawing ========== */
+
+function drawBackground() {
+  // Sky gradient
+  const g = ctx.createLinearGradient(0, 0, 0, height);
+  g.addColorStop(0, '#cfefff');
+  g.addColorStop(1, '#9ad8ff');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, width, height);
+
+  // Water (ocean ring)
+  ctx.fillStyle = '#5cc6ff';
+  ctx.beginPath();
+  ctx.ellipse(width * 0.5, height * 0.7, width * 0.55, height * 0.28, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Sand island
+  const sandCx = width * 0.5, sandCy = height * 0.72;
+  ctx.fillStyle = '#f4d188';
+  ctx.beginPath();
+  ctx.ellipse(sandCx, sandCy, width * 0.40, height * 0.20, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Simple palm silhouette
+  ctx.save();
+  ctx.translate(width * 0.72, height * 0.44);
+  ctx.fillStyle = '#2f1e0b';
+  ctx.fillRect(-6 * DPR, 0, 12 * DPR, 80 * DPR);
+  ctx.fillStyle = '#208b3a';
+  for (let i = 0; i < 5; i++) {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 56 * DPR, 18 * DPR, i * (Math.PI / 5), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Play area border shadow (matches CSS frame look)
+  ctx.strokeStyle = 'rgba(0,0,0,.5)';
+  ctx.lineWidth = 6 * DPR;
+  ctx.strokeRect(3 * DPR, 3 * DPR, width - 6 * DPR, height - 6 * DPR);
+}
+
+function drawImageCentered(img, x, y, wCSS, hCSS) {
+  const w = wCSS * DPR, h = hCSS * DPR;
+  ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+}
+
+function drawTokenCircleFallback(x, y, rCSS) {
+  const r = rCSS * DPR;
+  ctx.fillStyle = '#ffc107';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#a06a00'; ctx.lineWidth = 3 * DPR; ctx.stroke();
+}
+
+/* ========== Update Loop ========== */
+
+function step() {
+  // movement
+  if (keys.has('ArrowUp'))    player.y -= player.speed;
+  if (keys.has('ArrowDown'))  player.y += player.speed;
+  if (keys.has('ArrowLeft'))  player.x -= player.speed;
+  if (keys.has('ArrowRight')) player.x += player.speed;
+
+  // clamp to canvas
+  const halfP = (PLAYER_SIZE * DPR) / 2;
+  player.x = clamp(player.x, halfP, width - halfP);
+  player.y = clamp(player.y, halfP, height - halfP);
 
   // collisions
-  for(const t of tokens){
-    if(t.collected) continue;
-    const dx = (player.x - t.x);
-    const dy = (player.y - t.y);
-    const r  = (player.size*0.45 + t.size*0.45);
-    if(dx*dx + dy*dy < r*r){
-      t.collected = true;
+  const hitRadius = (PLAYER_SIZE + TOKEN_SIZE) * DPR * 0.5 * 0.9;
+  tokens = tokens.filter(t => {
+    if (dist(t, player) < hitRadius) {
       score++;
-      document.getElementById("score").textContent = `Score: ${score} / ${TARGET_TOKENS}`;
+      updateScore(score >= TARGET ? '🎉 You collected all tokens!' : undefined);
+      return false;
     }
-  }
-}
+    return true;
+  });
 
-function draw(){
-  // background image covering canvas
-  if(bgImg){
-    // draw cover
-    const ir = bgImg.width / bgImg.height;
-    const cr = w / h;
-    let dw, dh, dx, dy;
-    if(cr > ir){   // canvas wider than image
-      dw = w; dh = w/ir; dx = 0; dy = (h - dh)/2;
+  // draw
+  drawBackground();
+
+  // tokens
+  for (const t of tokens) {
+    if (tokenImg.complete && tokenImg.naturalWidth) {
+      drawImageCentered(tokenImg, t.x, t.y, TOKEN_SIZE, TOKEN_SIZE);
     } else {
-      dh = h; dw = h*ir; dy = 0; dx = (w - dw)/2;
+      drawTokenCircleFallback(t.x, t.y, TOKEN_SIZE * 0.5);
     }
-    CTX.drawImage(bgImg, dx, dy, dw, dh);
+  }
+
+  // player
+  if (playerImg.complete && playerImg.naturalWidth) {
+    drawImageCentered(playerImg, player.x, player.y, PLAYER_SIZE, PLAYER_SIZE);
   } else {
-    CTX.clearRect(0,0,w,h);
+    // Fallback box if image not ready yet
+    ctx.fillStyle = '#1b3a57';
+    ctx.fillRect(player.x - halfP, player.y - halfP, PLAYER_SIZE*DPR, PLAYER_SIZE*DPR);
   }
 
-  // draw tokens
-  for(const t of tokens){
-    if(t.collected) continue;
-    CTX.drawImage(tokenImg, t.x - t.size/2, t.y - t.size/2, t.size, t.size);
-  }
-
-  // draw player on top
-  CTX.drawImage(playerImg, player.x - player.size/2, player.y - player.size/2, player.size, player.size);
-
-  // rim (nice frame)
-  CTX.lineWidth = 6;
-  CTX.strokeStyle = "#323232";
-  CTX.strokeRect(3,3,w-6,h-6);
+  requestAnimationFrame(step);
 }
 
-function loop(ts){
-  const dt = Math.min(32, ts - lastTs) / 16.6667; // ~60fps step
-  lastTs = ts;
-  update(dt);
-  draw();
-  requestAnimationFrame(loop);
+/* ========== Start ==========\ */
+
+function start() {
+  spawnTokens();
+  requestAnimationFrame(step);
 }
 
-// === BOOT ===
-async function start(){
-  [playerImg, tokenImg, bgImg] = await Promise.all([
-    loadImage(PLAYER_SRC),
-    loadImage(TOKEN_SRC),
-    loadImage(BG_SRC),
-  ]);
+window.addEventListener('load', start);
 
-  setCanvasSize();
-  resetPlayer();
-  spawnTokens(TARGET_TOKENS);
-  document.getElementById("score").textContent = `Score: ${score} / ${TARGET_TOKENS}`;
-
-  window.addEventListener("resize", ()=>{ setCanvasSize(); }, {passive:true});
-  window.addEventListener("orientationchange", ()=>{ setTimeout(setCanvasSize, 250); });
-
-  window.addEventListener("keydown", keyDown);
-  window.addEventListener("keyup",   keyUp);
-
-  requestAnimationFrame(ts=>{ lastTs = ts; loop(ts); });
-}
-
-start();
+/* Optional: reset on orientation change to keep square ratio nicely */
+window.addEventListener('orientationchange', () => setTimeout(() => location.reload(), 350));
