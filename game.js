@@ -1,5 +1,9 @@
-/* MrPi Island Quest – Phaser 3 with simple animations */
-const W = 360, H = 480; // virtual resolution (responsive via CSS)
+/* MrPi Island Quest – Phaser 3, fixed scales + spacing */
+const W = 360, H = 480; // virtual canvas size
+
+const COIN_SCALE   = 0.085;  // <- smaller coins
+const PLAYER_SCALE = 0.20;   // <- bigger MrPi than before, still tasteful
+const TARGET_COINS = 7;
 
 const config = {
   type: Phaser.AUTO,
@@ -7,35 +11,37 @@ const config = {
   width: W,
   height: H,
   backgroundColor: '#a3dfff',
-  physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false }},
+  physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   scene: { preload, create, update }
 };
 
-let cursors, player, coins, scoreText, score = 0, target = 7;
+let cursors, player, coins, scoreText, score = 0;
 let touchDir = {x:0, y:0};
 let sparkEmitter;
+let playRect; // inner safe play area
 
 new Phaser.Game(config);
 
 function preload(){
-  // Generate an island texture on-the-fly (no external JPGs)
+  // Draw island background as a texture (no external jpg)
   const g = this.add.graphics();
-  g.fillStyle(0x7ad3ff, 1); g.fillEllipse(W/2, H/2, W*0.92, H*0.62);
-  g.fillStyle(0xf3cf7a, 1); g.fillEllipse(W/2, H/2, W*0.7, H*0.45);
-  g.lineStyle(8, 0x2b2b2b, 0.35); g.strokeEllipse(W/2, H/2, W*0.92, H*0.62);
+  g.fillStyle(0x7ad3ff, 1); g.fillEllipse(W/2, H/2, W*0.9, H*0.62);
+  g.fillStyle(0xf3cf7a, 1); g.fillEllipse(W/2, H/2, W*0.68, H*0.44);
+  g.lineStyle(8, 0x2b2b2b, 0.28); g.strokeEllipse(W/2, H/2, W*0.9, H*0.62);
   g.generateTexture('island', W, H); g.clear();
 
   // Simple tree
-  g.fillStyle(0x3a2a17,1); g.fillRect(W*0.67, H*0.45, 10, 40);
-  g.fillStyle(0x2aa043,1); g.fillCircle(W*0.67+5, H*0.45, 40);
-  g.generateTexture('tree', 120, 120); g.clear();
+  g.fillStyle(0x3a2a17,1); g.fillRect(W*0.69, H*0.45, 10, 40);
+  g.fillStyle(0x2aa043,1); g.fillCircle(W*0.69+5, H*0.45, 38);
+  g.generateTexture('tree', 120, 120); g.destroy();
 
-  // Sparkle dot for coin pickup particles
-  g.fillStyle(0xffffff, 1); g.fillCircle(4,4,4);
-  g.generateTexture('spark', 8, 8); g.destroy();
+  // Sparkle for pickups
+  const p = this.add.graphics();
+  p.fillStyle(0xffffff, 1); p.fillCircle(4,4,4);
+  p.generateTexture('spark', 8, 8); p.destroy();
 
-  // Your uploaded images
+  // Your assets
   this.load.image('mrpi',  'mrpi_logo_transparent.png');
   this.load.image('token', 'mrpi_token_transparent.png');
 }
@@ -43,80 +49,67 @@ function preload(){
 function create(){
   score = 0;
 
-  // Background island & a tree
+  // A “safe” play area inside the canvas so stuff isn’t glued to edges
+  playRect = new Phaser.Geom.Rectangle(24, 40, W-48, H-150);
+
+  // Background
   this.add.image(W/2, H/2, 'island').setDepth(-10);
-  this.add.image(W*0.67+15, H*0.47, 'tree').setScale(0.9).setDepth(-5);
+  this.add.image(W*0.7, H*0.46, 'tree').setScale(0.9).setDepth(-5);
 
-  // Player sprite with physics body
-  player = this.physics.add.image(W*0.35, H*0.42, 'mrpi')
-    .setOrigin(0.5, 0.8)
-    .setScale(0.24)                // bigger MrPi
-    .setCircle(90, 50, 38)         // rough hit circle; tweak if needed
+  // Player
+  player = this.physics.add.image(playRect.centerX - 40, playRect.centerY, 'mrpi')
+    .setOrigin(0.5, 0.82)
+    .setScale(PLAYER_SCALE)
+    .setCircle(90, 50, 38)                // hit circle based on source image
     .setCollideWorldBounds(true);
-
-  // Smoother feel
   player.setDamping(true).setDrag(0.001).setMaxVelocity(180);
 
-  // "Walk" bob animation (fake)
+  // Fake “walk” bob
   this.tweens.add({
-    targets: player,
-    scaleY: 0.24 * 0.96,
-    duration: 260,
-    yoyo: true,
-    repeat: -1,
-    ease: 'sine.inOut'
+    targets: player, scaleY: PLAYER_SCALE * 0.96,
+    duration: 260, yoyo: true, repeat: -1, ease: 'sine.inOut'
   });
 
   // Coins
   coins = this.physics.add.group();
   spawnCoins(this);
 
-  // Spin/pulse the coins so they feel alive
+  // Make coins feel alive
   coins.children.iterate(c => {
-    this.tweens.add({
-      targets: c, scale: { from: 0.13, to: 0.16 },
-      duration: 420, yoyo: true, repeat: -1, ease: 'sine.inOut'
-    });
-    this.tweens.add({
-      targets: c, angle: { from: -8, to: 8 },
-      duration: 520, yoyo: true, repeat: -1, ease: 'sine.inOut'
-    });
+    this.tweens.add({ targets: c, scale: { from: COIN_SCALE*0.92, to: COIN_SCALE*1.08 },
+      duration: 420, yoyo: true, repeat: -1, ease: 'sine.inOut' });
+    this.tweens.add({ targets: c, angle: { from: -6, to: 6 },
+      duration: 520, yoyo: true, repeat: -1, ease: 'sine.inOut' });
   });
 
-  // Sparkle particles on collect
+  // Pickup sparkle
   const particles = this.add.particles(0, 0, 'spark', {
-    lifespan: 300,
-    speed: { min: 40, max: 120 },
-    scale: { start: 0.8, end: 0 },
-    quantity: 0,
-    emitting: false
+    lifespan: 300, speed: { min: 40, max: 120 },
+    scale: { start: 0.8, end: 0 }, quantity: 0, emitting: false
   });
   sparkEmitter = particles;
 
-  // Overlap for pickups
+  // Overlap
   this.physics.add.overlap(player, coins, (_p, coin) => {
     sparkEmitter.setPosition(coin.x, coin.y);
     sparkEmitter.explode(12);
     coin.disableBody(true, true);
     score++;
-    scoreText.setText(`Score: ${score} / ${target}`);
-    if (score >= target) winAndRestart(this);
+    scoreText.setText(`Score: ${score} / ${TARGET_COINS}`);
+    if (score >= TARGET_COINS) winAndRestart(this);
   });
 
   // UI
-  scoreText = this.add.text(W/2, H*0.85, `Score: 0 / ${target}`, {
+  scoreText = this.add.text(W/2, H*0.83, `Score: 0 / ${TARGET_COINS}`, {
     fontSize: '22px', fontFamily: 'system-ui, Arial', color: '#102030'
   }).setOrigin(0.5);
 
-  // Input: keyboard
+  // Inputs
   cursors = this.input.keyboard.createCursorKeys();
-
-  // Input: swipe/tap
   this.input.on('pointerdown', (p)=> touchStart(this, p));
   this.input.on('pointermove', (p)=> touchMove(p));
   this.input.on('pointerup', ()=> touchDir={x:0,y:0});
 
-  // On-screen buttons
   hookButton('#up',    {x:0,  y:-1});
   hookButton('#down',  {x:0,  y: 1});
   hookButton('#left',  {x:-1, y: 0});
@@ -133,35 +126,41 @@ function update(){
   if (cursors.up?.isDown)    vy = -speed;
   else if (cursors.down?.isDown)  vy = speed;
 
-  // Touch/onscreen override wins
   if (touchDir.x || touchDir.y){
     vx = speed * touchDir.x;
     vy = speed * touchDir.y;
   }
   player.setVelocity(vx, vy);
 
-  // Flip MrPi to face horizontal direction
   if (vx !== 0) player.setFlipX(vx < 0);
 }
 
-/* ---- helpers ---- */
+/* ---------- helpers ---------- */
 
 function spawnCoins(scene){
   coins.clear(true, true);
-  const margin = 30;
-  const placements = [];
-  for (let i=0;i<target;i++){
+  const placed = [];
+  const minDistBetweenCoins = 72;  // keep coins apart
+  const minDistFromPlayer    = 80;  // don’t spawn on top of MrPi
+
+  for (let i=0;i<TARGET_COINS;i++){
     let x,y,tries=0;
     do {
-      x = Phaser.Math.Between(margin, W-margin);
-      y = Phaser.Math.Between(margin+40, H-margin-90);
+      x = Phaser.Math.Between(playRect.x + 20, playRect.right - 20);
+      y = Phaser.Math.Between(playRect.y + 20, playRect.bottom - 20);
       tries++;
-    } while (tries < 50 && tooCloseToAny(x,y,placements,54));
-    placements.push({x,y});
+    } while (
+      tries < 60 &&
+      ( tooCloseToAny(x,y,placed,minDistBetweenCoins) ||
+        Phaser.Math.Distance.Between(x,y,player.x,player.y) < minDistFromPlayer )
+    );
+    placed.push({x,y});
   }
-  placements.forEach(p=>{
+
+  placed.forEach(p=>{
     coins.create(p.x, p.y, 'token')
-      .setScale(0.145)
+      .setScale(COIN_SCALE)
+      // Collision circle tuned to your PNG; tweak if needed
       .setCircle(340, 115, 115)
       .setAngle(Phaser.Math.Between(-6,6));
   });
@@ -170,29 +169,26 @@ function spawnCoins(scene){
 function tooCloseToAny(x,y,arr,minD){ return arr.some(o => Phaser.Math.Distance.Between(x,y,o.x,o.y) < minD); }
 
 function winAndRestart(scene){
-  const t = scene.add.text(W/2, H*0.32, '🎉 You collected all tokens!', {
+  const t = scene.add.text(W/2, H*0.28, '🎉 You collected all tokens!', {
     fontSize:'22px', color:'#0a7a20', fontStyle:'bold', fontFamily:'system-ui, Arial'
   }).setOrigin(0.5).setDepth(10);
 
-  scene.time.delayedCall(1300, ()=>{
+  scene.time.delayedCall(1400, ()=>{
     t.destroy();
     scene.scene.restart();
   });
 }
 
 function touchStart(scene, p){
-  const rect = new Phaser.Geom.Rectangle(0, 0, W, H*0.8);
-  if (rect.contains(p.x, p.y)){
-    const dx = p.x - player.x;
-    const dy = p.y - player.y;
+  if (Phaser.Geom.Rectangle.Contains(playRect, p.x, p.y)){
+    const dx = p.x - player.x, dy = p.y - player.y;
     const len = Math.hypot(dx,dy) || 1;
     touchDir = {x: dx/len, y: dy/len};
   }
 }
 function touchMove(p){
   if (p.isDown){
-    const dx = p.x - player.x;
-    const dy = p.y - player.y;
+    const dx = p.x - player.x, dy = p.y - player.y;
     const len = Math.hypot(dx,dy) || 1;
     touchDir = {x: dx/len, y: dy/len};
   }
