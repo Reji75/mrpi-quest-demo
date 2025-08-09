@@ -1,46 +1,35 @@
 :root{
-  --bg:#8cc9de;
-  --panel:#dff1fb;
-  --ink:#1a2b34;
-  --frame:#2f3a40;
-  --accent:#ffd24a;
+  --sky:#9fd3e6;
+  --panel:#e9f5ff;
+  --ink:#223;
+  --frame:#2f2f35;
+  --shadow: 0 12px 30px rgba(0,0,0,.12);
 }
-
 *{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0; padding:0;
-  font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif;
-  color:var(--ink); background:var(--bg);
-}
-
-header{padding:16px 20px 0}
-h1{margin:0 0 6px; font-weight:800; letter-spacing:.3px}
-.emoji{filter: drop-shadow(0 2px 0 rgba(0,0,0,.15))}
-.hint{margin:0 0 12px; opacity:.85}
-
-#game-wrap{
-  width:min(680px, 92vw);
-  margin:0 auto 18px;
-}
-
-#game{
-  border-radius:18px;
-  background:linear-gradient(#eaf6ff, #d7ecfb);
+html,body{margin:0;padding:0;background:var(--sky);color:var(--ink);font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+h1{margin:.25rem 0 0;font-weight:800;letter-spacing:.3px;font-size:clamp(22px,5vw,40px)}
+.sub{margin:.25rem 0 1rem;color:#2a4150;opacity:.85}
+#frame{
+  background:var(--panel);
   border:10px solid var(--frame);
-  box-shadow:0 10px 26px rgba(0,0,0,.18), inset 0 0 0 8px #fff;
-  overflow:hidden;
+  border-radius:22px;
+  padding:14px;
+  box-shadow:var(--shadow);
 }
-
+#game{display:block;width:100%;height:auto;touch-action:none;}
 #hud{
-  display:flex; gap:14px; justify-content:space-between;
-  padding:10px 6px; font-weight:700;
+  display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:14px;
+  margin:14px auto 0;color:#1d3341;font-weight:700
+}
+#hud div{background:rgba(255,255,255,.35);padding:.6rem .8rem;border-radius:12px}
+.palm{filter:drop-shadow(0 3px 0 rgba(0,0,0,.07))}
+#errorBox{
+  position:fixed;inset:auto 12px 12px 12px;background:#2b2b2b;color:#fff;
+  padding:12px 14px;border-radius:10px;box-shadow:var(--shadow);font-size:.9rem;white-space:pre-wrap
 }
 
-.footnote{
-  text-align:center; opacity:.8; padding:8px 0 18px;
-  font-size:.9rem;
+/* Small phones */
+@media (max-width:420px){
+  #hud{grid-template-columns:1fr 1fr;grid-auto-rows:minmax(44px,auto)}
 }
-
-/* Keep canvas responsive */
-#game > canvas{width:100% !important; height:auto !important; display:block}
