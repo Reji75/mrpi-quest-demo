@@ -1,25 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MrPi Island Quest 🌴</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MrPi Island Quest</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <header>
-        <img src="mrpi_logo_transparent.png" alt="MrPi Logo" class="logo">
-        <h1>MrPi Island Quest 🌴</h1>
-        <p>Swipe or tap inside the game to move MrPi. Keyboard arrows work on desktop.</p>
-    </header>
+  <header>
+    <h1>MrPi Island Quest 🌴</h1>
+    <p class="sub">
+      Swipe or tap inside the game to move MrPi. Keyboard arrows work on desktop.
+    </p>
+  </header>
 
-    <div id="gameContainer">
-        <canvas id="gameCanvas" width="400" height="400"></canvas>
+  <main>
+    <section id="gameContainer">
+      <canvas id="gameCanvas" width="700" height="520" aria-label="Game canvas"></canvas>
+    </section>
+
+    <div id="hud">
+      <div id="score">Score: 0 / 5</div>
+      <div id="message" role="status" aria-live="polite"></div>
     </div>
 
-    <div id="score">Score: 0 / 5</div>
-    <div id="message"></div>
+    <!-- On-screen controls (mobile) -->
+    <div id="controls" aria-hidden="false">
+      <div class="control-row">
+        <button class="btn" data-dir="up" aria-label="Move up">▲</button>
+      </div>
+      <div class="control-row">
+        <button class="btn" data-dir="left" aria-label="Move left">◀</button>
+        <button class="btn" data-dir="down" aria-label="Move down">▼</button>
+        <button class="btn" data-dir="right" aria-label="Move right">▶</button>
+      </div>
+    </div>
+  </main>
 
-    <script src="script.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
