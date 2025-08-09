@@ -1,33 +1,32 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MrPi Island Quest</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- Phaser 3 engine -->
+  <script src="https://unpkg.com/phaser@3.70.0/dist/phaser.min.js"></script>
 </head>
 <body>
   <main class="wrap">
     <h1>MrPi Island Quest 🌴</h1>
-    <p class="hint">Swipe or tap in the play area to move MrPi. Keyboard arrows work on desktop.</p>
+    <p class="hint">Collect all golden MrPi tokens. Arrows, swipe, or tap controls work.</p>
 
-    <div class="canvas-wrap">
-      <canvas id="gameCanvas" aria-label="MrPi Island Quest"></canvas>
-    </div>
+    <div id="game"></div>
 
-    <div id="score" aria-live="polite">Score: 0 / 5</div>
-
-    <!-- Mobile onscreen arrows -->
-    <div id="controls" aria-hidden="true">
-      <button class="btn up"   data-dir="up"    aria-label="Move up">▲</button>
+    <!-- On-screen buttons (mobile) -->
+    <div id="controls" class="controls">
+      <button class="btn" id="up">▲</button>
       <div class="row">
-        <button class="btn left"  data-dir="left"  aria-label="Move left">◀</button>
-        <button class="btn down"  data-dir="down"  aria-label="Move down">▼</button>
-        <button class="btn right" data-dir="right" aria-label="Move right">▶</button>
+        <button class="btn" id="left">◀</button>
+        <button class="btn" id="down">▼</button>
+        <button class="btn" id="right">▶</button>
       </div>
     </div>
   </main>
 
-  <script defer src="script.js"></script>
+  <!-- Load the game logic -->
+  <script src="game.js"></script>
 </body>
 </html>
